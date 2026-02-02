@@ -3,8 +3,6 @@
 ## Table of Contents
 1. [Overview]
 2. [Analysis: Deduplication]
-3. [Key Findings]
-
 ---
 
 ## Overview

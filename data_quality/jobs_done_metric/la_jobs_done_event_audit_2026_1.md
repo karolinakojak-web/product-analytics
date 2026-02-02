@@ -5,7 +5,6 @@
 2. [Analysis 1: General Stats Checks]
 3. [Analysis 2: Object ID Field Discovery]
 4. [Analysis 3: Deduplication Analysis]
-5. [Key Findings]
 
 ## Overview
 
