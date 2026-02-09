@@ -1,3 +1,11 @@
+-- PURPOSE: Check for each customer how many users are inactive (are not using a platform) for 30 days of more
+
+-- CONTEXT:
+-- The Lumapps platform requires logging-in from users after 30 days of inactivity while Beekeeper doesn't have that rule.
+-- We want to understand impact on customers (and theirs users) after unifying approach and introducing to the Beekeeper platform the same rule (re-login after 30 days of inactivity).
+
+-- TIP: There are billions of events and to run the below query I limited data to daily partitions -> It was enough to take only the first and the last event for each user, per day, to have necessary results.
+
 WITH users_no as (SELECT tenant_gid,
                          avg(mau)             AS mau_avg_180d,
                          min(total_users)     AS total_users_min,
