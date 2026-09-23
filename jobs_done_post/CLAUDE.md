@@ -43,8 +43,7 @@ python3 check_article.py articles/article_2026-08.md
 - If the hook seems not to run, open `/hooks` once or restart the session. It needs `jq`
   and `python3` on the PATH.
 
-**One-time setup:** `pip install -r requirements.txt`, then set the three Looker
-variables documented in `.env.example`.
+**One-time setup:** see `README.md` (dependencies and Looker API key).
 
 **Options:**
 - `--fetch` pull fresh CSVs from Looker before analysing. Without it, the script reads whatever is already in `data/`.
