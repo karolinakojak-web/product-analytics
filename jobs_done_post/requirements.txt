@@ -1,0 +1,2 @@
+# Jobs Done monthly article generator
+looker-sdk>=24.0

@@ -10,15 +10,19 @@ Reads four CSV files from the data/ subfolder:
 Outputs structured analytics to stdout.
 
 Usage:
-    python3 prepare_data.py
-    python3 prepare_data.py --month 2026-05
+    python3 prepare_data.py                      analyse the CSVs already in data/
+    python3 prepare_data.py --fetch              pull fresh CSVs from Looker, then analyse
+    python3 prepare_data.py --month 2026-05      target a specific report month
 """
 
 import argparse
 import csv
 import glob
+import json
+import os
 import re
 import sys
+from datetime import date
 from pathlib import Path
 from statistics import mean, stdev
 
@@ -92,9 +96,14 @@ def read_feature_csv(path: str, company: str) -> list[dict]:
             r["company"] = company
             jd = int(_parse_num(r.get("jd", "0")))
             users = int(_parse_num(r.get("jd_users", "0")))
+            mau = _parse_num(r.get("mau", "0"))
             r["jd"] = jd
             r["jd_users"] = users
+            r["mau"] = mau
             r["frequency"] = round(jd / users, 2) if users > 0 else 0.0
+            # Share of the active user base that used this feature. MAU is
+            # platform-wide, so this is reach, not a within-domain ratio.
+            r["ucj_mau_pct"] = round(users / mau * 100, 1) if mau else None
             if r.get("month") and len(r["month"]) == 7:
                 rows.append(r)
     return rows
@@ -222,7 +231,8 @@ def build_platform_trends(all_rows: list[dict]) -> dict[str, dict]:
 
 
 def print_platform_section(company: str, trends: dict[str, dict], report_month: str) -> None:
-    months = sorted(trends)
+    # Older months are fetched only to back the YoY column; don't print them.
+    months = sorted(trends)[-REPORTED_MONTHS:]
     print(f"\n{'='*80}")
     print(f"{company.upper()} — PLATFORM TOTALS (13-month trend)")
     print(f"{'='*80}")
@@ -261,7 +271,9 @@ def build_feature_history(rows: list[dict], company: str) -> dict:
     return history
 
 
-def feature_analytics(history: dict, report_month: str) -> list[dict]:
+def feature_analytics(history: dict, report_month: str, platform_change: float = 0.0) -> list[dict]:
+    """platform_change: the platform's own MoM change in Jobs Done, used to express
+    each feature's contribution to it."""
     prev_month = adj_month(report_month, -1)
     yoy_month  = adj_month(report_month, -12)
     results = []
@@ -273,9 +285,10 @@ def feature_analytics(history: dict, report_month: str) -> list[dict]:
         prev = by_month.get(prev_month, {})
         yoy  = by_month.get(yoy_month, {})
         months_present = sorted(by_month)
+        recent = months_present[-REPORTED_MONTHS:]
 
-        # MoM series over all available months
-        jd_series = [(m, by_month[m]["jd"]) for m in months_present]
+        # MoM series over the reported window (older months only back the YoY column)
+        jd_series = [(m, by_month[m]["jd"]) for m in recent]
         mom_series = [
             pct(jd_series[i][1], jd_series[i-1][1])
             for i in range(1, len(jd_series))
@@ -289,17 +302,22 @@ def feature_analytics(history: dict, report_month: str) -> list[dict]:
             "jd":           cur["jd"],
             "jd_users":     cur["jd_users"],
             "frequency":    cur["frequency"],
+            "ucj_mau_pct":  cur.get("ucj_mau_pct"),
             "mom_pct":      pct(cur["jd"], prev.get("jd", 0)) if prev else None,
             "yoy_pct":      pct(cur["jd"], yoy.get("jd", 0))  if yoy  else None,
             "abs_mom":      cur["jd"] - prev.get("jd", 0)     if prev else None,
+            # This feature's contribution to the platform's MoM change. This is
+            # what "biggest influence on the overall result" actually means.
+            "contribution_pct":  (round((cur["jd"] - prev.get("jd", 0)) / platform_change * 100, 1)
+                             if prev and platform_change else None),
             "prev_jd":      prev.get("jd", 0),
             "prev_freq":    prev.get("frequency"),
             "trend":        trend_label(mom_series),
             "consecutive":  consecutive_direction(mom_series),
             "avg_mom":      round(mean(mom_series), 1) if mom_series else None,
             "months_tracked": len(months_present),
-            "jd_12m_peak":  max(by_month[m]["jd"] for m in months_present),
-            "jd_12m_peak_month": max(months_present, key=lambda m: by_month[m]["jd"]),
+            "jd_12m_peak":  max(by_month[m]["jd"] for m in recent),
+            "jd_12m_peak_month": max(recent, key=lambda m: by_month[m]["jd"]),
         })
 
     return sorted(results, key=lambda r: r["jd"], reverse=True)
@@ -320,44 +338,79 @@ def print_feature_section(company: str, features: list[dict], report_month: str)
         rows = groups[grp]
         grp_total = sum(r["jd"] for r in rows)
         print(f"\n  [{grp}]  —  {fmt_m(grp_total)} total JD")
-        print(f"  {'Feature':<22} {'Jobs Done':>12} {'Users':>10} {'Freq':>6} {'MoM%':>8} {'YoY%':>8} {'Trend':<12} {'Consecutive'}")
-        print("  " + "-"*96)
+        print(f"  {'Feature':<22} {'Jobs Done':>12} {'Users':>10} {'UCJ/MAU':>8} {'Freq':>6} {'MoM%':>8} {'YoY%':>8} {'Trend':<12} {'Consecutive'}")
+        print("  " + "-"*105)
         for r in rows:
             mom  = fmt_pct(r["mom_pct"])
             yoy  = fmt_pct(r["yoy_pct"])
             freq = f"{r['frequency']:.1f}x"
-            print(f"  {r['feature']:<22} {fmt_m(r['jd']):>12} {fmt_m(r['jd_users']):>10} {freq:>6} {mom:>8} {yoy:>8} {r['trend']:<12} {r['consecutive']}")
+            reach = f"{r['ucj_mau_pct']:.1f}%" if r.get("ucj_mau_pct") is not None else "n/a"
+            print(f"  {r['feature']:<22} {fmt_m(r['jd']):>12} {fmt_m(r['jd_users']):>10} {reach:>8} {freq:>6} {mom:>8} {yoy:>8} {r['trend']:<12} {r['consecutive']}")
 
 
-def print_movers(features: list[dict]) -> None:
-    threshold_pct = 5
-    threshold_abs = 5_000
+def print_movers(features: list[dict], platform_jd: float = 0.0) -> None:
+    """Rank what to write about.
 
-    growers  = [r for r in features if r["mom_pct"] is not None and r["mom_pct"] >= threshold_pct  and (r["abs_mom"] or 0) >= threshold_abs]
-    decliners= [r for r in features if r["mom_pct"] is not None and r["mom_pct"] <= -threshold_pct and abs(r["abs_mom"] or 0) >= threshold_abs]
-    new      = [r for r in features if r["prev_jd"] == 0]
+    A feature's CONTRIBUTION is its own absolute MoM change over the platform's, i.e.
+    how much of the month it explains. For LumApps in August 2026 the platform went
+    127.99M -> 118.04M (-9.95M) and Content alone moved -8.51M, so Content contributed
+    85.5% of the month. Jobs Done is additive across features, so contributions sum to
+    100%. A contribution is negative when the feature moved against its platform.
 
-    if growers:
-        print("\nTOP GROWERS THIS MONTH (MoM ≥ +5%, abs ≥ 5K)")
+    Two lists, deliberately. Sorting by MoM% alone systematically promotes small
+    features: in August 2026 it put Videos (-26.7%, 1.1% of the change) above Content
+    (-7.1%, 85.5% of it). Ranking by contribution answers "what happened this month";
+    the relative list keeps small-but-loud signals from disappearing.
+    """
+    DRIVER_SHARE_MIN = 2.0      # % of the platform's monthly change
+    RELATIVE_MOM_MIN = 10.0     # %
+    RELATIVE_ABS_MIN = max(5_000, platform_jd * 0.0005)   # 0.05% of platform volume
+
+    drivers = [r for r in features
+               if r.get("contribution_pct") is not None and abs(r["contribution_pct"]) >= DRIVER_SHARE_MIN]
+    if drivers:
+        print(f"\nBIGGEST DRIVERS OF THE MONTH (≥ {DRIVER_SHARE_MIN:.0f}% of the platform's monthly change)")
         print("-"*80)
-        for r in sorted(growers, key=lambda x: x["mom_pct"], reverse=True):
+        print("  Ranked by how much of this month's movement each feature explains.")
+        for r in sorted(drivers, key=lambda x: -abs(x["contribution_pct"])):
+            sign = "+" if (r["abs_mom"] or 0) >= 0 else "-"
+            # A negative share means the feature moved against its platform — worth
+            # saying out loud ("everything grew except X"), not hiding behind abs().
+            against = "  <- moved AGAINST the platform" if r["contribution_pct"] < 0 else ""
+            print(f"  {sign} [{r['domain_group']}] {r['feature']}: "
+                  f"{abs(r['contribution_pct']):.1f}% of the monthly change  |  {fmt_m(r['jd'])} JD  "
+                  f"{fmt_pct(r['mom_pct'])} MoM  ({r['abs_mom']:+,} abs){against}")
+
+    relative = [r for r in features
+                if r["mom_pct"] is not None and abs(r["mom_pct"]) >= RELATIVE_MOM_MIN
+                and abs(r["abs_mom"] or 0) >= RELATIVE_ABS_MIN
+                and r not in drivers]
+    if relative:
+        print(f"\nSTRONGEST RELATIVE MOVES (|MoM| ≥ {RELATIVE_MOM_MIN:.0f}%, abs ≥ {fmt_m(RELATIVE_ABS_MIN)})")
+        print("-"*80)
+        print("  Not top drivers by volume — cover at most one of these, and only if it tells a story.")
+        for r in sorted(relative, key=lambda x: -abs(x["mom_pct"])):
             freq_chg = f"  freq {r['frequency']:.1f}x ← {r['prev_freq']:.1f}x" if r.get("prev_freq") else ""
-            print(f"  + [{r['domain_group']}] {r['feature']}: "
-                  f"{fmt_m(r['jd'])} JD  {fmt_pct(r['mom_pct'])} MoM  ({r['abs_mom']:+,} abs){freq_chg}")
+            if r.get("contribution_pct") is None:
+                share = "n/a"
+            elif r["contribution_pct"] < 0:
+                share = f"{abs(r['contribution_pct']):.1f}% of the monthly change, against the platform"
+            else:
+                share = f"{abs(r['contribution_pct']):.1f}% of the monthly change"
+            print(f"  · [{r['domain_group']}] {r['feature']}: {fmt_m(r['jd'])} JD  "
+                  f"{fmt_pct(r['mom_pct'])} MoM  ({share}){freq_chg}")
 
-    if decliners:
-        print("\nTOP DECLINERS THIS MONTH (MoM ≤ -5%, abs ≥ 5K)")
+    # A feature tracked for less than the full window is new to the metric. It will
+    # never rank on volume, but "we started measuring this" is itself news.
+    newly = [r for r in features if r["months_tracked"] < REPORTED_MONTHS]
+    if newly:
+        print("\nNEWLY TRACKED FEATURES (shorter history than the reporting window)")
         print("-"*80)
-        for r in sorted(decliners, key=lambda x: x["mom_pct"]):
-            freq_chg = f"  freq {r['frequency']:.1f}x ← {r['prev_freq']:.1f}x" if r.get("prev_freq") else ""
-            print(f"  - [{r['domain_group']}] {r['feature']}: "
-                  f"{fmt_m(r['jd'])} JD  {fmt_pct(r['mom_pct'])} MoM  ({r['abs_mom']:+,} abs){freq_chg}")
-
-    if new:
-        print("\nNEW / FIRST-TIME TRACKED FEATURES")
-        print("-"*80)
-        for r in new:
-            print(f"  * [{r['domain_group']}] {r['feature']}: {fmt_m(r['jd'])} JD, {fmt_m(r['jd_users'])} users")
+        print("  Too small to rank on volume. Worth a line the first time they appear.")
+        for r in sorted(newly, key=lambda x: x["months_tracked"]):
+            print(f"  * [{r['domain_group']}] {r['feature']}: {fmt_m(r['jd'])} JD, "
+                  f"{fmt_m(r['jd_users'])} users, {r['months_tracked']} months tracked, "
+                  f"{fmt_pct(r['mom_pct'])} MoM")
 
 
 def print_yearly_trends(company: str, features: list[dict]) -> None:
@@ -374,18 +427,229 @@ def print_yearly_trends(company: str, features: list[dict]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Looker API fetch  (--fetch)
+# ---------------------------------------------------------------------------
+# Replaces the manual CSV export from the two LookML "Jobs Done" dashboards:
+#   LumApps    https://bi.lumapps.com/dashboards/base%3A%3Ajobs_done
+#   Beekeeper  https://bi.lumapps.com/dashboards/product_bi%3A%3Ajobs_done
+#
+# Three of the four dashboard tabs are pulled ("Month overview" is skipped —
+# it is a 1-month snapshot, redundant with the 13-month series). Each tab is
+# fetched at two scopes, "total" (platform-wide) and "features" (broken down
+# by product domain group and feature), giving 6 queries per platform.
+#
+# The dashboard tiles pivot on feature; we request the same data unpivoted so
+# it lands in long format, which is what the parsers above expect.
+#
+# Credentials come from the standard Looker SDK environment variables:
+#   LOOKERSDK_BASE_URL / LOOKERSDK_CLIENT_ID / LOOKERSDK_CLIENT_SECRET
+
+RAW_DIR = DATA_DIR / "raw"
+
+# 25 months of history: 13 months are reported, and each of them needs the same
+# month a year earlier to get a YoY figure. The dashboards default to 13 months,
+# which only yields YoY for the report month itself.
+TIME_FRAME = "25 month ago for 25 month"
+REPORTED_MONTHS = 13
+
+LOOKER_PLATFORMS = {
+    "lumapps": {
+        "dashboard": "base::jobs_done",
+        "model": "base",
+        "view": "fct_jobs_done__bi",
+        "prefix": "fct_jobs_done__bi",
+        "mau_field": "fct_user_metrics__bi.total_mau",
+        "filters": {
+            "fct_jobs_done__bi.calendar_date": TIME_FRAME,
+            "fct_jobs_done__bi.day_selection": "last^_day^_of^_month",
+        },
+    },
+    "beekeeper": {
+        "dashboard": "product_bi::jobs_done",
+        "model": "product_bi",
+        "view": "jobs_done",
+        "prefix": "jobs_done",
+        "mau_field": "user_metrics.mau",
+        # Beekeeper tiles carry tenant scoping that LumApps does not have.
+        # Dropping these would silently change every number. The tab tiles leave
+        # tenants.is_customer empty, so we do too.
+        "filters": {
+            "jobs_done.calendar_date": TIME_FRAME,
+            "jobs_done.day_selection": "last^_day^_of^_month",
+            "jobs_done.jobs_done_version_param": "2026.1",
+            "tenants.account_selection": "commercial^_all",
+        },
+    },
+}
+
+# tab name -> measures to pull for it
+LOOKER_TABS = {
+    "jobs_done": lambda cfg: [f"{cfg['prefix']}.jobs_done_28d"],
+    "ucj":       lambda cfg: [f"{cfg['prefix']}.active_users_28d", cfg["mau_field"]],
+    "frequency": lambda cfg: [f"{cfg['prefix']}.jobs_done_per_user_28d"],
+}
+
+# Looker field -> canonical CSV header written out for the parsers above.
+HEADER_FOR = {
+    "calendar_month":        "Calendar Month",
+    "product_domain_group":  "Product Domain Group",
+    "feature":               "Feature",
+    "jobs_done_28d":         "Jobs Done",
+    "active_users_28d":      "Jobs Done Users",
+    "jobs_done_per_user_28d": "Frequency",
+    "total_mau":             "MAU",
+    "mau":                   "MAU",
+}
+
+
+def _header_for(field: str) -> str:
+    return HEADER_FOR.get(field.split(".", 1)[-1], field)
+
+
+def _run(sdk, cfg: dict, measures: list[str], breakdown: bool) -> list[dict]:
+    """Run one unpivoted inline query and return its JSON rows."""
+    from looker_sdk import models40
+
+    dims = [f"{cfg['prefix']}.calendar_month"]
+    if breakdown:
+        dims += [f"{cfg['prefix']}.product_domain_group", f"{cfg['prefix']}.feature"]
+
+    query = models40.WriteQuery(
+        model=cfg["model"],
+        view=cfg["view"],
+        fields=dims + measures,
+        filters=dict(cfg["filters"]),
+        sorts=[f"{cfg['prefix']}.calendar_month desc"] + dims[1:],
+        limit="5000",
+    )
+    return json.loads(sdk.run_inline_query(result_format="json", body=query))
+
+
+def _write_csv(path: Path, fields: list[str], rows: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow([_header_for(x) for x in fields])
+        for r in rows:
+            w.writerow(["" if r.get(x) is None else r[x] for x in fields])
+
+
+def fetch_from_looker(report_month: str = "") -> str:
+    """Pull the three dashboard tabs for both platforms and write the CSVs.
+
+    Writes the per-tab responses to data/raw/ as an audit trail, then merges
+    them into the four data/ files the analytics below read.
+    Returns the month stamp used in the filenames.
+    """
+    try:
+        import looker_sdk
+    except ImportError:
+        sys.exit("Error: looker-sdk is not installed.  pip install -r requirements.txt")
+
+    for var in ("LOOKERSDK_BASE_URL", "LOOKERSDK_CLIENT_ID", "LOOKERSDK_CLIENT_SECRET"):
+        if not os.environ.get(var):
+            sys.exit(f"Error: {var} is not set. See .env.example.")
+
+    sdk = looker_sdk.init40()
+    print(f"[looker] {os.environ['LOOKERSDK_BASE_URL']}", file=sys.stderr)
+
+    stamp = report_month
+    written = []
+
+    for platform, cfg in LOOKER_PLATFORMS.items():
+        # key -> merged row, so the three tabs line up on the same grain
+        totals: dict[str, dict] = {}
+        features: dict[tuple, dict] = {}
+
+        for tab, measures_for in LOOKER_TABS.items():
+            measures = measures_for(cfg)
+
+            for scope, breakdown in (("total", False), ("features", True)):
+                rows = _run(sdk, cfg, measures, breakdown)
+                dims = [f"{cfg['prefix']}.calendar_month"]
+                if breakdown:
+                    dims += [f"{cfg['prefix']}.product_domain_group", f"{cfg['prefix']}.feature"]
+
+                raw_path = RAW_DIR / f"{platform}_{tab}_{scope}_{stamp}.csv"
+                _write_csv(raw_path, dims + measures, rows)
+                written.append(raw_path)
+                print(f"  [{platform}] {tab}/{scope}: {len(rows)} rows -> {raw_path.name}",
+                      file=sys.stderr)
+
+                target = features if breakdown else totals
+                for r in rows:
+                    month = r.get(f"{cfg['prefix']}.calendar_month")
+                    if not month:
+                        continue
+                    if breakdown:
+                        key = (month,
+                               r.get(f"{cfg['prefix']}.product_domain_group") or "",
+                               r.get(f"{cfg['prefix']}.feature") or "")
+                    else:
+                        key = month
+                    slot = target.setdefault(key, {})
+                    for m in measures:
+                        slot[_header_for(m)] = r.get(m)
+
+        # --- merged files, matching the historical manual-export layout ---
+        all_path = DATA_DIR / f"{platform}_all_{stamp}.csv"
+        _merge_csv(all_path,
+                   ["Calendar Month", "Jobs Done", "Jobs Done Users", "MAU", "Frequency"],
+                   [{"Calendar Month": m, **v} for m, v in sorted(totals.items(), reverse=True)])
+        written.append(all_path)
+
+        feat_path = DATA_DIR / f"{platform}_features_{stamp}.csv"
+        _merge_csv(feat_path,
+                   ["Calendar Month", "Product Domain Group", "Feature",
+                    "Jobs Done", "Jobs Done Users", "MAU", "Frequency"],
+                   [{"Calendar Month": k[0], "Product Domain Group": k[1], "Feature": k[2], **v}
+                    for k, v in sorted(features.items(), reverse=True)])
+        written.append(feat_path)
+
+        print(f"  [{platform}] merged -> {all_path.name}, {feat_path.name}", file=sys.stderr)
+
+    print(f"[looker] {len(written)} files written\n", file=sys.stderr)
+    return stamp
+
+
+def _merge_csv(path: Path, headers: list[str], rows: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=headers, extrasaction="ignore")
+        w.writeheader()
+        for r in rows:
+            w.writerow({h: r.get(h, "") for h in headers})
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
+def default_report_month() -> str:
+    """Last complete calendar month."""
+    t = date.today()
+    return adj_month(f"{t.year}-{t.month:02d}", -1)
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--month", default="", help="Report month YYYY-MM (defaults to latest)")
+    parser.add_argument("--month", default="",
+                        help="Report month YYYY-MM (defaults to the last complete month)")
+    parser.add_argument("--fetch", action="store_true",
+                        help="Pull fresh CSVs from the Looker dashboards before analysing")
+    parser.add_argument("--note", default="", metavar="TEXT",
+                        help="Editorial context to surface at the top of the report, e.g. "
+                             "\"the Agents feature was added this month, worth a mention\"")
     args = parser.parse_args()
+
+    if args.fetch:
+        fetch_from_looker(args.month or default_report_month())
 
     files = find_files()
     missing = [k for k, v in files.items() if not v]
     if missing:
-        sys.exit(f"Error: could not find files for: {missing}\nLooked in: {DATA_DIR}")
+        sys.exit(f"Error: could not find files for: {missing}\nLooked in: {DATA_DIR}\n"
+                 f"Run with --fetch to pull them from Looker.")
 
     print(f"[Files]", file=sys.stderr)
     for k, v in files.items():
@@ -416,19 +680,36 @@ def main():
     print(f"UCJ/MAU = Users Completing Jobs as % of Monthly Active Users.")
     print(f"{'='*80}")
 
+    if args.note:
+        print(f"\n{'='*80}")
+        print("EDITORIAL NOTE FROM THE ANALYST — take this into account when writing")
+        print(f"{'='*80}")
+        print(f"  {args.note}")
+
     print_platform_section("Lumapps", luma_platform, report_month)
     print_platform_section("Beekeeper", beek_platform, report_month)
 
-    # Feature analytics
-    luma_features = feature_analytics(build_feature_history(luma_feat_rows, "Lumapps"), report_month)
-    beek_features = feature_analytics(build_feature_history(beek_feat_rows, "Beekeeper"), report_month)
+    # Feature analytics. Each feature is scored against its own platform's monthly
+    # change, so "influence on the overall result" is computed rather than eyeballed.
+    def monthly_change(trends: dict) -> tuple[float, float]:
+        cur = trends.get(report_month, {})
+        prev = trends.get(adj_month(report_month, -1), {})
+        return cur.get("jd", 0) - prev.get("jd", 0), cur.get("jd", 0)
+
+    luma_change, luma_jd = monthly_change(luma_platform)
+    beek_change, beek_jd = monthly_change(beek_platform)
+
+    luma_features = feature_analytics(build_feature_history(luma_feat_rows, "Lumapps"),
+                                      report_month, luma_change)
+    beek_features = feature_analytics(build_feature_history(beek_feat_rows, "Beekeeper"),
+                                      report_month, beek_change)
 
     print_feature_section("Lumapps", luma_features, report_month)
-    print_movers(luma_features)
+    print_movers(luma_features, luma_jd)
     print_yearly_trends("Lumapps", luma_features)
 
     print_feature_section("Beekeeper", beek_features, report_month)
-    print_movers(beek_features)
+    print_movers(beek_features, beek_jd)
     print_yearly_trends("Beekeeper", beek_features)
 
 

@@ -1,4 +1,4 @@
-# Jobs Done — May 2026
+# Jobs Done - May 2026 Product Performance
 
 Hi Team,
 
@@ -28,7 +28,7 @@ Note that for LumApps, Jobs Done currently covers only a handful of features and
 
 🏠 **Spaces** and 📝 **Posts** both pulled back in May (-13.4% and -12.8% MoM respectively), continuing a soft patch that mirrors the same period in 2025. Both are still growing year-over-year (+6.2% and +6.6%), so this looks seasonal rather than structural.
 
-Full breakdown available in the [LumApps Jobs Done dashboard].
+*Full breakdown available in the [LumApps Jobs Done dashboard](https://bi.lumapps.com/dashboards/base::jobs_done?tab_name=Jobs+Done&Time+Frame=13+month+ago+for+13+month&Product+Domain+Group=Communication+%26+Collaboration).*
 
 ---
 
@@ -42,7 +42,7 @@ Beekeeper's volume was broadly stable in May at 35.1M, with most of the portfoli
 
 📡 On the flip side, **Streams** — Beekeeper's highest-volume feature — is holding steady month-to-month but is -9.3% versus May 2025. With Chats growing and Streams softening on an annual basis, it's worth keeping an eye on how communication patterns evolve across the two features over the coming months.
 
-Full breakdown available in the [Beekeeper Jobs Done dashboard].
+*Full breakdown available in the [Beekeeper Jobs Done dashboard](https://bi.lumapps.com/dashboards/product_bi::jobs_done?tab_name=Jobs+Done&Tenant+Selection=commercial%5E_all&Tenant+Subdomain=&Company+Size=&Industry=&+Commercial+Phase=&Commercial+Swarm=&Is+CS+Ops+Managed+%28Yes+%2F+No%29=&Time+Frame=13+month+ago+for+13+month&Product+Domain+Group=Communication+%26+Collaboration).*
 
 ---
 

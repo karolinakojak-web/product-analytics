@@ -2,29 +2,113 @@
 
 ## How to proceed
 
-1. Run `python3 prepare_data.py` from this folder. It prints full analytics to the terminal.
-2. Read the output — platform totals with MAU, feature MoM/YoY/frequency, 13-month trend classification, and notable movers for both companies.
+1. Run `python3 prepare_data.py --fetch` from this folder. It pulls fresh data from
+   Looker, writes the CSVs into `data/`, and prints full analytics to the terminal.
+2. Read the output — platform totals with MAU, feature MoM/YoY/frequency, 13-month trend classification (backed by 25 months of history for YoY), and notable movers for both companies.
 3. Write the article following the style rules below.
-4. Save as `article_YYYY-MM.md` in this folder.
+4. Save as `articles/article_YYYY-MM.md`. **A hook checks it automatically on save** and
+   reports any failure straight back, so fix what it reports before handing the article over.
 
-**Optional:** `python3 prepare_data.py --month 2026-04` to target a specific month.
+---
+
+## Automatic quality check
+
+`check_article.py` verifies a written article. A **Claude Code hook runs it on every save**
+of `articles/article_*.md`, configured in `.claude/settings.json` at the repo root. Nothing
+to remember and nothing to launch: write the article, the check runs, failures come back
+as an error. It can also be run by hand:
+
+```bash
+python3 check_article.py articles/article_2026-08.md
+```
+
+**What it verifies**
+
+| | |
+|---|---|
+| Figures | Every `M`, `K` and `%` in the article must trace back to the CSVs in `data/`. A figure written with an explicit sign must carry the sign the data has. A figure introduced by "about", "roughly" or "nearly" is matched with a tolerance. |
+| Structure | Title shape, opening sentence, intro link, both dashboard links, all italicised where they should be. |
+| Wording | Em dashes, superlative rankings, recovery verbs, analyst vocabulary. |
+| Selection | At most 3 feature paragraphs per platform, correct emoji per feature, no year-over-year inside a feature paragraph. |
+| Warnings | Quantity words ("most", "half", "a third") are listed, never blocking. The script cannot judge them; a human confirms them against the figures. |
+
+**What it cannot do**
+
+- It only fires on writes made **by Claude**. Editing the article by hand in an editor
+  triggers nothing, so run the command above after a manual edit.
+- Warnings are not failures. The August 2026 issue shipped a wrong "most of July's drop"
+  that only a human could catch, which is exactly why quantity words are surfaced.
+- A failure can mean the data is stale rather than the article being wrong. Re-run
+  `python3 prepare_data.py --fetch` before assuming the prose is at fault.
+- If the hook seems not to run, open `/hooks` once or restart the session. It needs `jq`
+  and `python3` on the PATH.
+
+**One-time setup:** `pip install -r requirements.txt`, then set the three Looker
+variables documented in `.env.example`.
+
+**Options:**
+- `--fetch` pull fresh CSVs from Looker before analysing. Without it, the script reads whatever is already in `data/`.
+- `--month 2026-04` target a specific report month. Defaults to the last complete calendar month.
+- `--note "<text>"` pass editorial context for the month (a new feature, a known incident, an angle to take).
+
+---
+
+## Where the data comes from
+
+`--fetch` queries the Looker API directly. There is no manual CSV export step any more.
+
+| Platform | LookML dashboard | Explore |
+|---|---|---|
+| LumApps | [`base::jobs_done`](https://bi.lumapps.com/dashboards/base%3A%3Ajobs_done) — defined in the `internal/bi` repo | `base` / `fct_jobs_done__bi` |
+| Beekeeper | [`product_bi::jobs_done`](https://bi.lumapps.com/dashboards/product_bi%3A%3Ajobs_done) — defined in the `looker` repo | `product_bi` / `jobs_done` |
+
+Both dashboards have four tabs. Three are pulled — **Jobs Done**, **Users Completing
+Jobs** and **Frequency**. The fourth, *Month overview*, is skipped: it is a one-month
+snapshot already contained in the 13-month series. Each tab is fetched at two scopes
+(platform total, and broken down by domain group + feature), so 6 queries per platform.
+
+The dashboard tiles pivot on feature. The API requests the same data **unpivoted**, so
+it arrives in long format with one row per month × domain × feature.
+
+The *Users Completing Jobs* tab shows four looks where the others show two, but they hold
+only two distinct measures (`active_users_28d`, MAU) across the two scopes — the extra two
+are subsets. Everything else on the tabs (`MoM %`, `Users Completing Jobs / MAU`) is a
+Looker **table calculation**, computed at render time and never stored, so the script
+recomputes those itself. MAU is carried down to feature grain, which is what gives the
+UCJ/MAU reach figure per feature.
+
+**Beekeeper carries tenant scoping that LumApps does not** — `account_selection =
+commercial_all` and `jobs_done_version_param = 2026.1`. These are reproduced in
+`LOOKER_PLATFORMS` in `prepare_data.py`. Removing them silently changes every number.
 
 ---
 
 ## Data files — structure and naming
 
-All CSV files live in the `data/` subfolder. Four files per reporting period:
+All CSV files live in the `data/` subfolder, which is **gitignored** — these exports
+carry customer-level data and are regenerated on demand.
 
 | File pattern | Content |
 |---|---|
-| `lumapps_all_YYYY-MM.csv` | Lumapps platform totals: Jobs Done, Users Completing Jobs, MAU |
-| `beekeeper_all_YYYY-MM.csv` | Beekeeper platform totals: Jobs Done, Users Completing Jobs, MAU |
-| `lumapps_features_YYYY-MM.csv` | Lumapps feature-level breakdown (C&C only by design) |
-| `beekeeper_features_YYYY-MM.csv` | Beekeeper feature-level breakdown (all domains) |
+| `lumapps_all_YYYY-MM.csv` | Lumapps platform totals: Jobs Done, Users Completing Jobs, MAU, Frequency |
+| `beekeeper_all_YYYY-MM.csv` | Beekeeper platform totals: same columns |
+| `lumapps_features_YYYY-MM.csv` | Lumapps breakdown by domain group × feature, incl. MAU |
+| `beekeeper_features_YYYY-MM.csv` | Beekeeper breakdown by domain group × feature, incl. MAU |
 
-**Lumapps scope:** Jobs Done covers Communication & Collaboration only — by design, not a data gap.
+`data/raw/` holds the twelve untouched per-tab responses (`<platform>_<tab>_<scope>_YYYY-MM.csv`)
+as an audit trail. The four files above are merged from them and are what the analytics read.
 
-**Beekeeper scope:** all domain groups included — Communication & Collaboration, Work & Automation, Channels, People & Growth.
+**Lumapps scope:** the list of product domain groups is growing. Communication &
+Collaboration was the only one for a long time; **AI & Search** was added to Jobs Done in
+**September 2026** (single `Agents` feature, small volume, earlier data is backfill), and
+a third domain is on the way.
+
+Articles up to August 2026 carried a standing note saying LumApps Jobs Done covered only
+Communication & Collaboration. **That note is retired** — it stopped being true. Do not
+reinstate it. Read the domain groups from the script output instead of assuming a scope.
+
+**Beekeeper scope:** all four domain groups — Communication & Collaboration,
+Work & Automation, Channels, People & Growth.
 
 **Known quirk:** the Lumapps `all` file can contain noise rows (MAU = 0) — filtered automatically by the script.
 
@@ -67,15 +151,31 @@ Jobs Done focuses on moments when a user **gets the core value** of a feature. E
 ## Article style rules
 
 ### Read the reference articles first
-- `article_2026-05.md` — the current approved style (most recent, use this as the primary template)
+- `articles/article_2026-07.md` and `articles/article_2026-06.md` — the two most recent, use these as the primary template
+- `articles/article_2026-05.md` — same structure, slightly longer feature commentary
 - April 2026 article pasted at the bottom of this file — useful for voice reference
 
-### Opening (always the same)
-```
-Hi Team,
+All three follow the same markdown skeleton: the title below, a `## High level overview`
+block, then one `##` section per platform, each closing on its dashboard line.
 
-Here is how our key product usage KPI, Jobs Done, performed in [Month] across two platforms.
+### Title (always the same shape)
+
 ```
+# Jobs Done - <Month> <Year> Product Performance
+```
+
+A plain hyphen, and the `Product Performance` suffix is part of the title, not optional.
+
+### Opening (always the same)
+
+```
+Hi Team, here is how our key product usage KPI, Jobs Done, performed in [Month] across two platforms.
+
+*Don't you know what "Jobs Done" metrics are? [Read this introduction](https://we.lumapps.com/we/ls/space/5070108616032256/team-engineering/article/ddf2b3ba-e590-4806-ac0a-00669376237c)*
+```
+
+The second line is a standing link to the Jobs Done explainer — carry it over verbatim
+every month. **It is italicised**, like the two closing lines below.
 
 ### High level overview block
 ```
@@ -93,31 +193,119 @@ Here is how our key product usage KPI, Jobs Done, performed in [Month] across tw
 - **Positive framing** where the data allows it. Lead with what's working before what isn't.
 - **Short.** The article is a quick summary — readers go to the dashboard for details. Aim for something readable in 2 minutes.
 - Use M for millions, K for thousands. Every claim has a number behind it.
+- **Simple and direct.** Short sentences, ordinary words, one idea at a time. Say what
+  happened, not what it signifies.
+- **Never let analytical vocabulary reach the prose.** The script's wording is for
+  reading the data, not for the article. "Content accounts for almost the entire monthly
+  move" is the contribution metric leaking in; write "Content explains almost all of the
+  drop". Same for "swing", "driver", "penetration", "reach".
+- No figurative phrasing ("gave back the summer spike"), no sentence fragments
+  ("Still the platform's backbone").
+- **Name the metric a percentage belongs to.** MAU and Users Completing Jobs are different
+  numbers and move differently: in August 2026, MAU was +1.4% and UCJ +1.9%. Writing
+  "more people active (+1.9%)" puts a MAU label on a UCJ figure and reads as a
+  contradiction of the overview. Say "Users Completing Jobs", "active user base" or
+  "frequency" explicitly, every time.
 - No corporate filler. No "it is worth noting". No "one could argue".
+- **No em dashes (—).** Rewrite the sentence rather than swapping the character for an
+  en dash or a double hyphen: a comma, a colon, parentheses, or two shorter sentences
+  almost always read better. Articles published before this rule keep their original
+  punctuation.
 
 ### What to cover — and what to skip
-**Only cover features with the strongest MoM change or biggest influence on the overall result.** Skip everything else. 2–3 features per company is usually enough. Stable features with unremarkable numbers get no mention.
 
-For each feature you do cover: one or two sentences max. Include the number, the direction, and one piece of context (YoY comparison, consecutive months, frequency signal, seasonal pattern). Don't list every metric — pick the one that tells the story.
+**2–3 features per company. No more.** The script ranks the candidates for you — do not
+re-rank them by eye, and do not go looking outside its lists.
+
+Pick in this order:
+
+1. **BIGGEST DRIVERS OF THE MONTH** — take the top 1–2. This list is sorted by each
+   feature's contribution to the platform's monthly change, which is what "explains the month"
+   means. A feature contributing 85% of the change *is* the story, even at a modest -7% MoM.
+2. **STRONGEST RELATIVE MOVES** — at most one, and only if it tells a story. These move
+   sharply in % but barely shift the total, so never lead with one.
+3. **NEWLY TRACKED FEATURES** — worth one line the first time it appears in an article,
+   then leave it alone until it has real volume. Say it is new and give the raw numbers;
+   do not read a trend into a few months of history.
+
+**A short history does not mean a recent launch.** The explore backfills data when a
+feature is onboarded, so this list flags backfilled features, not new ones. Check the
+real go-live date before calling anything new. Known case: **Agents** (AI & Search,
+LumApps) shows history from early 2026 but was only added to Jobs Done in **September
+2026** — it must not appear in any article before then.
+
+Everything else gets no mention. Stable features with unremarkable numbers get no mention.
+
+Never justify a pick with "biggest MoM %" alone — that metric systematically promotes
+small features. In August 2026 it ranked Videos (-26.7%, 1.1% of the change) above
+Content (-7.1%, 85.5% of it).
+
+For each feature you do cover: one or two sentences max. Include the number, the direction, and one piece of context: consecutive months up or down, frequency versus users, a known seasonal pattern, or how the month sits against recent months. Don't list every metric, pick the one that tells the story.
+
+### Year-over-year: overview only
+
+**YoY is a platform-level figure only.** It is allowed in two places:
+
+1. the High level overview block, and
+2. the opening paragraph of a platform section, when it carries the angle of the month
+   (e.g. framing a down month against strong annual growth).
+
+**Never in a feature paragraph.** Do not put a YoY figure there, and do not paraphrase
+one either ("over twelve months it is down 7%", "nearly double last August").
+
+These are monthly articles: the feature commentary explains the month, and a YoY figure
+pulls the reader onto a different time scale. This came out of the review of the June
+and July 2026 issues, so it is a team convention.
+
+⚠️ `articles/article_2026-06.md` and `articles/article_2026-07.md` still carry
+feature-level YoY, since they predate the correction. Follow them for style, not on this
+point.
+
+### Editorial note from the analyst
+
+`--note "<text>"` prints a block at the top of the report. When it is there, treat it as
+a steer that outranks the ranking above: if it asks for a feature to be covered, cover it
+even when the lists would have dropped it. Keep it to the length the data supports.
+
+```
+python3 prepare_data.py --note "Agents was added to LumApps Jobs Done, worth a mention"
+```
 
 ### Trend language rules
 - Do not use "recovered" or "bounced back" based on a single positive MoM. Check 3+ months of context. A feature is only recovering if it is returning toward a prior reference level, not just up from a recent dip.
 - Do not include notes like "this needs investigation" or "verify before publishing" — that is the analyst's job before the article goes out. If a number is not ready to publish, leave it out entirely.
 - Do not overinterpret. Describe what the data shows; don't speculate about causes unless they are clearly visible in the numbers (e.g. a known seasonal pattern, a consecutive streak).
+- **Check quantity words against the data.** "most", "nearly all", "half", "the bulk of"
+  are claims, not flourishes. Compute them before writing: a month that recovers 1.5M of
+  a 4.0M drop makes up a third of it, not most of it.
+- **No superlative rankings over time.** Avoid "best month of the year", "second-best
+  month so far", "strongest growth of 2026", "highest ever". These were dropped in
+  review: they are fragile (one revision of the data invalidates them), they invite
+  the reader to compare across a window the article is not about, and they add nothing the
+  figure itself does not already say. Give the number and the direction, and stop there.
+  Describing a feature's current size ("Beekeeper's biggest feature") is fine, that is a
+  statement about now, not a ranking of months.
 
-### LumApps scope note (always include)
-Add this after the LumApps opening line:
-
-> Note that for LumApps, Jobs Done currently covers only a handful of features and only within the Communication & Collaboration product domain, so a decline does not indicate a platform-wide pullback but just a change in specific product domain engagement.
+  ⚠️ The June and July 2026 articles contain "best KPI of the current year" and
+  "second-best month of the year". They predate this rule. Do not copy them on this point.
 
 ### Emojis for features
-📄 Content · 💬 Chats · 📡 Streams · 🏠 Spaces · 📝 Posts · 🎬 Videos · 👍 Reactions · 📊 Surveys · ☑️ Tasks · 📅 Shifts · 🗂️ Forms · 🔗 Shortcuts · 📢 Campaigns · 📆 Company Events · ⚙️ Workflows
+
+This list is authoritative — use it even if an older article used a different glyph.
+📄 Content · 💬 Chats · 📡 Streams · 🏠 Spaces · 📝 Posts · 🎬 Videos · 👍 Reactions · 📊 Surveys · ☑️ Tasks · 📅 Shifts · 🗂️ Forms · 🔗 Shortcuts · 📢 Campaigns · 📆 Company Events · ⚙️ Workflows · 🗨️ Comments · 📁 Documents · 🤝 Referrals · 🤖 Agents
 
 ### Close each company section
-`Full breakdown available in the [LumApps / Beekeeper Jobs Done dashboard].`
 
-### Data notes (end of article)
-One short paragraph. State only permanent limitations (Workflows users metric) and anything anomalous that was excluded from this issue. Do not describe what was investigated or not.
+Both links are fixed — copy them as they are:
+
+```
+*Full breakdown available in the [LumApps Jobs Done dashboard](https://bi.lumapps.com/dashboards/base::jobs_done?tab_name=Jobs+Done&Time+Frame=13+month+ago+for+13+month&Product+Domain+Group=Communication+%26+Collaboration).*
+*Full breakdown available in the [Beekeeper Jobs Done dashboard](https://bi.lumapps.com/dashboards/product_bi::jobs_done?tab_name=Jobs+Done&Tenant+Selection=commercial%5E_all&Tenant+Subdomain=&Company+Size=&Industry=&+Commercial+Phase=&Commercial+Swarm=&Is+CS+Ops+Managed+%28Yes+%2F+No%29=&Time+Frame=13+month+ago+for+13+month&Product+Domain+Group=Communication+%26+Collaboration).*
+```
+
+Both URLs open on the *Jobs Done* tab filtered to Communication & Collaboration, which
+is where the article's commentary sits. LumApps now also has AI & Search; the link is
+deliberately left on C&C.
 
 ---
 
@@ -135,6 +323,13 @@ One short paragraph. State only permanent limitations (Workflows users metric) a
 ## Known permanent data limitations
 
 - **Customer-level breakdowns** not in the CSV export — available in Looker with filters.
+- **Users and MAU cannot be summed across domain groups.** They count *unique* users, so a
+  user active in two domains is counted once at platform level but twice if the rows are
+  added up. This is why the `all` files have no domain column: platform totals are queried
+  at platform grain. Only Jobs Done volume is safely additive.
+- **Historical figures can be revised.** The Beekeeper total published for April 2026
+  (32.9M) no longer reproduces — the explore now returns 34.3M for that month. Do not
+  restate an old month from memory; re-read it from the current output.
 - **Workflows (Beekeeper) users metric** always 0 — do not report it. Volume is valid.
 - **MAU** comes from the `_all_` files. If those files are missing, note MAU is unavailable.
 
