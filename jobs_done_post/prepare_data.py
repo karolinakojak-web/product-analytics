@@ -446,10 +446,11 @@ def print_yearly_trends(company: str, features: list[dict]) -> None:
 
 RAW_DIR = DATA_DIR / "raw"
 
-# 25 months of history: 13 months are reported, and each of them needs the same
-# month a year earlier to get a YoY figure. The dashboards default to 13 months,
-# which only yields YoY for the report month itself.
-TIME_FRAME = "25 month ago for 25 month"
+# 13 months are reported. 13 would already cover the report month's own YoY, since
+# a 13-month window reaches exactly one year back; 15 buys two months of slack so a
+# late write-up still has its YoY. Fetching two full years was only needed to fill
+# the YoY column for every past month, which nothing reads any more.
+TIME_FRAME = "15 month ago for 15 month"
 REPORTED_MONTHS = 13
 
 LOOKER_PLATFORMS = {

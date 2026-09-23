@@ -4,7 +4,7 @@
 
 1. Run `python3 prepare_data.py --fetch` from this folder. It pulls fresh data from
    Looker, writes the CSVs into `data/`, and prints full analytics to the terminal.
-2. Read the output — platform totals with MAU, feature MoM/YoY/frequency, 13-month trend classification (backed by 25 months of history for YoY), and notable movers for both companies.
+2. Read the output — platform totals with MAU, feature MoM/YoY/frequency, 13-month trend classification (15 months fetched, so the report month has its YoY), and notable movers for both companies.
 3. Write the article following the style rules below.
 4. Save as `articles/article_YYYY-MM.md`. **A hook checks it automatically on save** and
    reports any failure straight back, so fix what it reports before handing the article over.
