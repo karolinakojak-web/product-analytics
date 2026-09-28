@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "statusMessage": "Checking the article against the data",
+            "timeout": 60,
+            "command": "jq -r '.tool_response.filePath // .tool_input.file_path' | { read -r f; case \"$f\" in */jobs_done_post/articles/article_*.md) python3 \"$(dirname \"$f\")/../check_article.py\" \"$f\" >&2 || exit 2;; esac; }"
+          }
+        ]
+      }
+    ]
+  }
+}

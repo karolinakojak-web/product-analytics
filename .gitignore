@@ -1,0 +1,15 @@
+# Looker exports — these carry customer-level data and are regenerated on demand
+jobs_done_post/data/
+
+# Local credentials
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Editors
+.idea/
+.vscode/
