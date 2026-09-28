@@ -49,6 +49,12 @@ BANNED = [
     (r"\bswing\b",                       "analyst vocabulary"),
     (r"\bcontribution\b",                "analyst vocabulary"),
     (r"\bpenetration\b",                 "analyst vocabulary"),
+    # Jobs Done covers one action on a subset of features, so these phrasings claim
+    # more than the data supports. See "Claims must stay inside the metric".
+    (r"\b(biggest|largest|most[- ]used) feature\b",
+     "platform-wide ranking; write 'the largest of the features we track'"),
+    (r"\bused by \*{0,2}\d",
+     "'used by X%' implies general feature usage; write 'X% of active users completed a <feature> job'"),
 ]
 
 # Quantity words are claims. The script cannot judge them, so it surfaces them.

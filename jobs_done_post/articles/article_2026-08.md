@@ -36,8 +36,8 @@ August was quieter, as summer months usually are. Compared to August 2025, Jobs 
 
 Beekeeper moved the opposite way in August: more people completed a job (+1.9% Users Completing Jobs) and each of them did more (+2.8% frequency).
 
-📡 **Streams** drove about 70% of that growth: 18.5M Jobs Done (+6.0% MoM), with Users Completing Jobs up +2.8% and frequency up +3.1%. It is still Beekeeper's biggest feature, used by **82.5% of active users**.
+📡 **Streams** drove about 70% of that growth: 18.5M Jobs Done (+6.0% MoM), with Users Completing Jobs up +2.8% and frequency up +3.1%. It is the largest of the Beekeeper features we track, and **82.5% of active users** completed a Streams job this month.
 
-💬 **Chats** grew +3.2% MoM to 6.7M Jobs Done, with Users Completing Jobs back up to 222.6K after July's dip. It is now used by 32.0% of active users.
+💬 **Chats** grew +3.2% MoM to 6.7M Jobs Done, with Users Completing Jobs back up to 222.6K after July's dip. 32.0% of active users completed a Chats job this month.
 
 *Full breakdown available in the [Beekeeper Jobs Done dashboard](https://bi.lumapps.com/dashboards/product_bi::jobs_done?tab_name=Jobs+Done&Tenant+Selection=commercial%5E_all&Tenant+Subdomain=&Company+Size=&Industry=&+Commercial+Phase=&Commercial+Swarm=&Is+CS+Ops+Managed+%28Yes+%2F+No%29=&Time+Frame=13+month+ago+for+13+month&Product+Domain+Group=Communication+%26+Collaboration).*

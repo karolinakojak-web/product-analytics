@@ -241,6 +241,22 @@ Content (-7.1%, 85.5% of it).
 
 For each feature you do cover: one or two sentences max. Include the number, the direction, and one piece of context: consecutive months up or down, frequency versus users, a known seasonal pattern, or how the month sits against recent months. Don't list every metric, pick the one that tells the story.
 
+### Claims must stay inside the metric
+
+Jobs Done measures **one key action per feature**, on a **subset** of the features that
+exist. Every figure is a statement about Jobs Done, never about the platform. Say which.
+
+| Do not write | Write |
+|---|---|
+| "Beekeeper's biggest feature" | "the largest of the Beekeeper features we track" |
+| "used by 82.5% of active users" | "82.5% of active users completed a Streams job this month" |
+| "the only feature to grow" | "the only one of the tracked features to grow" |
+
+The arithmetic behind those phrasings is right; the scope the words imply is not.
+"used by" suggests general usage of the feature, which the metric does not measure. The
+same caution applies to any comparative or coverage claim, and to the UCJ/MAU thresholds
+below: they describe adoption of a tracked action, not of a feature.
+
 ### Year-over-year: overview only
 
 **YoY is a platform-level figure only.** It is allowed in two places:
@@ -282,8 +298,9 @@ python3 prepare_data.py --note "Agents was added to LumApps Jobs Done, worth a m
   review: they are fragile (one revision of the data invalidates them), they invite
   the reader to compare across a window the article is not about, and they add nothing the
   figure itself does not already say. Give the number and the direction, and stop there.
-  Describing a feature's current size ("Beekeeper's biggest feature") is fine, that is a
-  statement about now, not a ranking of months.
+  Describing a feature's current size is fine as a statement about now rather than a
+  ranking of months, but keep it inside the metric: "the largest of the features we
+  track", not "Beekeeper's biggest feature".
 
   ⚠️ The June and July 2026 articles contain "best KPI of the current year" and
   "second-best month of the year". They predate this rule. Do not copy them on this point.
@@ -314,8 +331,11 @@ deliberately left on C&C.
 - **Volume up + Users down** → fewer people doing more — intensity signal
 - **Volume down + Frequency flat** → reach problem (fewer users, same depth per user)
 - **Volume down + Frequency down** → most concerning — users leaving and disengaging
-- **UCJ/MAU > 85%** → broadly adopted across the active user base
-- **UCJ/MAU < 30%** → niche or early-stage feature
+- **UCJ/MAU > 85%** → the tracked action is performed by most of the active user base
+- **UCJ/MAU < 30%** → the tracked action reaches a small share of active users
+
+  Both read as adoption of the **one action Jobs Done measures**, not of the feature as a
+  whole. Do not turn them into "widely adopted" or "niche feature" in the article.
 
 ---
 
