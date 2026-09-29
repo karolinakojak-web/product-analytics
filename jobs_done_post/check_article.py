@@ -64,6 +64,17 @@ YOY = r"(YoY|year[- ]over[- ]year|last (January|February|March|April|May|June|Ju
 
 NUM = re.compile(r"(?<![\w.])([+-]?)(\d[\d,]*(?:\.\d+)?)\s*(M|K|%)")
 
+# Each platform section opens on a sentence listing what Jobs Done covers:
+#   Jobs Done covers <Domain> (<Feature>, <Feature>) and <Domain> (<Feature>).
+# The scope keeps growing, so the sentence is compared with the data every month.
+SCOPE = re.compile(r"^Jobs Done covers (.+)$", re.M)
+SCOPE_GROUP = re.compile(r"([A-Z][\w &]*?) \(([^)]*)\)")
+SCOPE_SENTENCE_FROM = "2026-09"   # first issue carrying the sentence
+
+# Features whose data is backfilled before they joined Jobs Done. They stay out of
+# the scope sentence, and out of the article, until their go-live month.
+GO_LIVE = {"Agents": "2026-09"}
+
 
 def fail(msg):
     print(f"  KO  {msg}")
@@ -165,6 +176,35 @@ def feature_values(feat, name, month, allr):
     return [(u, v) for u, v in out if v is not None]
 
 
+def expected_scope(feat, month):
+    """{domain group: {features}} tracked in the report month."""
+    scope = {}
+    for name, months in feat.items():
+        row = months.get(month)
+        if row and num(row["Jobs Done"]) and GO_LIVE.get(name, month) <= month:
+            scope.setdefault(row["Product Domain Group"], set()).add(name)
+    return scope
+
+
+def check_scope(sec, feat, month, plat, failures):
+    m = SCOPE.search(sec)
+    if not m:
+        failures.append(f"{plat}: missing the scope sentence 'Jobs Done covers <Domain> (<Feature>, ...)'")
+        return
+    written = {d: {f.strip() for f in fs.split(",") if f.strip()}
+               for d, fs in SCOPE_GROUP.findall(m.group(1))}
+    want = expected_scope(feat, month)
+    for d in sorted(want.keys() - written.keys()):
+        failures.append(f"{plat}: scope sentence misses the domain {d} ({', '.join(sorted(want[d]))})")
+    for d in sorted(written.keys() - want.keys()):
+        failures.append(f"{plat}: scope sentence lists {d}, which is not tracked in {month}")
+    for d in sorted(want.keys() & written.keys()):
+        for f in sorted(want[d] - written[d]):
+            failures.append(f"{plat}: scope sentence misses {f} under {d}")
+        for f in sorted(written[d] - want[d]):
+            failures.append(f"{plat}: scope sentence lists {f} under {d}, which is not tracked in {month}")
+
+
 APPROX = re.compile(r"\b(about|roughly|around|nearly|almost|some|close to|just over|just under)\s*$", re.I)
 
 
@@ -261,6 +301,8 @@ def main():
                                     ("beekeeper", sections.get("beekeeper", ""), (bk_all, bk_feat))):
         if not sec:
             continue
+        if month >= SCOPE_SENTENCE_FROM:
+            check_scope(sec, feat, month, plat, failures)
         allowed = platform_values(allr, month)
         for p in sec.split("\n\n"):
             fm = re.search(r"\*\*([A-Z][\w &]*?)\*\*", p)

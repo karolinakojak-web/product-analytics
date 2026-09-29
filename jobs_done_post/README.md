@@ -76,7 +76,9 @@ python3 check_article.py articles/article_2026-08.md
 
 It verifies that every figure in the article traces back to the CSVs, and that the
 editorial rules hold (structure, banned wording, feature count, emoji, year-over-year
-placement). A hook in `.claude/settings.json` runs it automatically whenever Claude saves
+placement). It also checks that the scope sentence opening each platform section lists
+exactly the domains and features tracked that month. The scope grows over time, so this
+check catches a sentence copied from last month. A hook in `.claude/settings.json` runs it automatically whenever Claude saves
 an article, so you only need the command above after editing one by hand.
 
 Warnings are not failures. Quantity words like "most" or "half" are listed for you to
