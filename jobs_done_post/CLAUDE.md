@@ -28,6 +28,7 @@ python3 check_article.py articles/article_2026-08.md
 |---|---|
 | Figures | Every `M`, `K` and `%` in the article must trace back to the CSVs in `data/`. A figure written with an explicit sign must carry the sign the data has. A figure introduced by "about", "roughly" or "nearly" is matched with a tolerance. |
 | Structure | Title shape, opening sentence, intro link, both dashboard links, all italicised where they should be. |
+| Scope | Each platform's scope sentence lists exactly the domain groups and features tracked in the report month (from September 2026). |
 | Wording | Em dashes, superlative rankings, recovery verbs, analyst vocabulary. |
 | Selection | At most 3 feature paragraphs per platform, correct emoji per feature, no year-over-year inside a feature paragraph. |
 | Warnings | Quantity words ("most", "half", "a third") are listed, never blocking. The script cannot judge them; a human confirms them against the figures. |
@@ -104,7 +105,8 @@ a third domain is on the way.
 
 Articles up to August 2026 carried a standing note saying LumApps Jobs Done covered only
 Communication & Collaboration. **That note is retired** — it stopped being true. Do not
-reinstate it. Read the domain groups from the script output instead of assuming a scope.
+reinstate it. It is replaced by the scope sentence that opens each platform section
+(see *Scope sentence* below), written from the script output every month.
 
 **Beekeeper scope:** all four domain groups — Communication & Collaboration,
 Work & Automation, Channels, People & Growth.
@@ -155,7 +157,8 @@ Jobs Done focuses on moments when a user **gets the core value** of a feature. E
 - April 2026 article pasted at the bottom of this file — useful for voice reference
 
 All three follow the same markdown skeleton: the title below, a `## High level overview`
-block, then one `##` section per platform, each closing on its dashboard line.
+block, then one `##` section per platform, each opening on its scope sentence (added in
+September 2026, so the reference articles lack it) and closing on its dashboard line.
 
 ### Title (always the same shape)
 
@@ -186,6 +189,28 @@ every month. **It is italicised**, like the two closing lines below.
 - LumApps X.XXM (+X.X% MoM)
 - Beekeeper XXXK (+X.X% MoM)
 ```
+
+### Scope sentence (opens each platform section)
+
+Each `## LumApps` and `## Beekeeper` section starts with one sentence listing the product
+domain groups Jobs Done covers, each with its features, before any commentary:
+
+```
+Jobs Done covers Communication & Collaboration (Content, Posts, Comments, Reactions, Spaces, Videos) and AI & Search (Agents).
+
+Jobs Done covers Communication & Collaboration (Streams, Chats, Comments, Reactions, Documents, Company Events), Work & Automation (Tasks, Forms, Shifts, Shortcuts, Workflows), People & Growth (Surveys, Referrals) and Channels (Campaigns).
+```
+
+⚠️ **Check the scope every month, do not copy last month's sentence.** The scope is
+growing: AI & Search joined LumApps in September 2026 and another domain is on the way.
+Rebuild both sentences from the domain groups and features in the script output. Within a
+domain, list the features from largest to smallest by Jobs Done. A feature listed in
+`GO_LIVE` in `check_article.py` (currently Agents, from September 2026) stays out until
+its go-live month, even though its backfilled data already shows up.
+
+`check_article.py` compares each sentence with the data for the report month and fails
+on a missing or extra domain or feature. From September 2026 on, it also fails if the
+sentence is missing.
 
 ### Tone and length
 - **Engaged and human** — write like a colleague sharing news, not like a dashboard export.
