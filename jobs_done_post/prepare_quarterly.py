@@ -14,6 +14,7 @@ Writes to data/quarterly/, one file per platform and kind:
   <platform>_feature_weeks_YYYY-QN.csv  weekly Jobs Done per feature, report quarter and
                                         the one before, to catch steps and spikes
   <platform>_anomaly_drivers_YYYY-QN.csv  the companies behind each step or spike
+  <platform>_integrity_YYYY-QN.csv   checks on the company directory (see below)
 
 Usage:
     python3 prepare_quarterly.py                          last complete quarter
@@ -44,6 +45,7 @@ TOTAL_HEADERS = ["Quarter", "Jobs Done", "Jobs Done Users"]
 FEATURE_HEADERS = ["Quarter", "Product Domain Group", "Feature", "Jobs Done", "Jobs Done Users"]
 COMPANY_HEADERS = ["Product Domain Group", "Feature", "Rank", "Company", "Slug", "Jobs Done"]
 WEEK_HEADERS = ["Week", "Product Domain Group", "Feature", "Jobs Done"]
+INTEGRITY_HEADERS = ["Check", "Feature", "Tenant", "Value", "Expected"]
 DRIVER_HEADERS = ["Feature", "Kind", "Week", "Rank", "Company", "Slug", "Change", "Share of change"]
 
 
@@ -197,9 +199,10 @@ def fetch(quarter: str) -> None:
         _write(DATA_DIR / f"{platform}_features_{quarter}.csv", FEATURE_HEADERS, features)
 
         # Companies are ranked on tenant_gid, straight from the fact table, and only
-        # then named. Summing through the company join double-counts on LumApps:
-        # in Q2 2026 it doubled a large customer's Videos JD (twice its real 583,683).
-        # Tenants without a name in the company directory drop out of the ranking.
+        # then named, so the figures stay right whatever the company directory holds.
+        # In Q2 2026, summing through the LumApps company join doubled a large
+        # customer's Videos JD (twice its real 583,683). The directory is checked
+        # below instead, so a problem there is reported, not silently absorbed.
         tenant = f"{p}.tenant_gid"
         in_quarter = {f"{p}.calendar_date": date_range(quarter, quarter),
                       f"{p}.day_selection": "any^_day"}
@@ -212,14 +215,31 @@ def fetch(quarter: str) -> None:
                      for k, rows in ranked.items()}
         names = _company_names(sdk, cfg, in_quarter,
                                {r[tenant] for rows in shortlist.values() for r in rows})
-        companies = []
+        companies, integrity = [], []
         for (group, feature), rows in shortlist.items():
             named = [r for r in rows if r[tenant] in names][:TOP_COMPANIES]
             for i, r in enumerate(named, 1):
                 name, slug = names[r[tenant]]
                 companies.append({"Product Domain Group": group, "Feature": feature, "Rank": i,
                                   "Company": name, "Slug": slug, "Jobs Done": r[jd]})
+            # A tenant with no name ahead of the third named one would have been in
+            # the top 3: say so rather than drop it quietly.
+            cutoff = named[2][jd] if len(named) >= 3 else 0
+            for r in rows:
+                if r[tenant] not in names and r[jd] >= cutoff:
+                    integrity.append({"Check": "unnamed tenant in a top 3", "Feature": feature,
+                                      "Tenant": r[tenant], "Value": r[jd], "Expected": ""})
         _write(DATA_DIR / f"{platform}_companies_{quarter}.csv", COMPANY_HEADERS, companies)
+
+        # The company join must not change the total: summed through it, the
+        # quarter's Jobs Done must equal the plain total. More means the directory
+        # holds several rows for some companies.
+        plain = sum(r[jd] or 0 for r in run_query(sdk, cfg, [qdim], [jd], in_quarter))
+        joined = sum(r[jd] or 0 for r in run_query(sdk, cfg, [qdim, cfg["company_fields"][0]],
+                                                   [jd], in_quarter, limit="50000"))
+        integrity.append({"Check": "company join total", "Feature": "", "Tenant": "",
+                          "Value": joined, "Expected": plain})
+        _write(DATA_DIR / f"{platform}_integrity_{quarter}.csv", INTEGRITY_HEADERS, integrity)
 
         # Weekly Jobs Done per feature over this quarter and the one before: a step
         # in it (a tracking change, a big launch) makes the QoQ misleading.
@@ -406,7 +426,30 @@ def analyse(platform: str, quarter: str) -> list[dict]:
         a = anomalies.get(r["feature"])
         r["unreviewed"] = bool(a) and not anomaly_review(platform, r["feature"], a)
     ANOMALIES.extend(x for x in found if not x["review"])
+    ISSUES.extend((platform, w) for w in integrity_warnings(platform, quarter))
     return rows
+
+
+ISSUES: list[tuple] = []   # company directory problems, gathered across platforms
+
+
+def integrity_warnings(platform: str, quarter: str) -> list[str]:
+    """Problems in the company directory found at fetch time, as sentences."""
+    path = DATA_DIR / f"{platform}_integrity_{quarter}.csv"
+    if not path.exists():
+        return [f"no integrity check on file for {quarter}: re-run without --no-fetch"]
+    out = []
+    for r in _read(path):
+        value, expected = _num(r["Value"]), _num(r["Expected"])
+        if r["Check"] == "company join total" and value > expected:
+            out.append(f"the company join inflates Jobs Done by {pct(value, expected):+.2f}% "
+                       f"({fmt_n(value)} against {fmt_n(expected)}): the company directory "
+                       f"holds duplicate rows. The figures here are unaffected (ranked on "
+                       f"tenant_gid); report it upstream.")
+        elif r["Check"] == "unnamed tenant in a top 3":
+            out.append(f"tenant {r['Tenant']} ({fmt_n(value)} {r['Feature']} JD) has no company "
+                       f"name, so it is left out of the {r['Feature']} top 3. Find out why.")
+    return out
 
 
 ANOMALIES: list[dict] = []   # unreviewed steps and spikes, gathered across platforms
@@ -497,6 +540,11 @@ def main():
         rows += analyse(platform, quarter)
     print_highlights(rows)
     print_anomalies_to_review(quarter)
+    if ISSUES:
+        print(f"\n{'!' * 80}\n⚠️  COMPANY DIRECTORY ISSUES ({len(ISSUES)})\n{'!' * 80}")
+        for platform, w in ISSUES:
+            print(f"  [{platform}] {w}")
+        print(f"\n⚠️ {len(ISSUES)} company directory issue(s): see above.", file=sys.stderr)
     if ANOMALIES:
         print(f"\n⚠️ {len(ANOMALIES)} anomaly(ies) to review before writing: see above.",
               file=sys.stderr)

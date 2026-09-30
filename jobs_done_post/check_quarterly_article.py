@@ -346,6 +346,13 @@ def main():
                                 f"in the week of {odd['week']}); investigate it, then record "
                                 f"'misleading' or 'real' in ANOMALY_REVIEWS (jobs_done_common.py)")
 
+    # Company directory issues found at fetch time: warnings, since the article's
+    # figures are ranked on tenant_gid and stay right; they still must be reported.
+    import prepare_quarterly
+    for plat in ("lumapps", "beekeeper"):
+        for w in prepare_quarterly.integrity_warnings(plat, quarter):
+            warnings.append(f"company directory ({plat}): {w}")
+
     for p, hours in stale(sorted(READ)):
         failures.append(f"data is {hours:.0f}h old ({p.name}): an article is checked on data "
                         f"fetched within {FRESH_HOURS}h. Re-run python3 prepare_quarterly.py "
