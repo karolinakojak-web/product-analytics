@@ -747,7 +747,7 @@ def main():
     parser.add_argument("--month", default="",
                         help="Report month YYYY-MM (defaults to the last complete month)")
     parser.add_argument("--fetch", action="store_true",
-                        help="Pull fresh CSVs from the Looker dashboards before analysing")
+                        help="Pull fresh CSVs from the Looker explores before analysing")
     parser.add_argument("--note", default="", metavar="TEXT",
                         help="Editorial context to surface at the top of the report, e.g. "
                              "\"the Agents feature was added this month, worth a mention\"")

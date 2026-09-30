@@ -98,8 +98,11 @@ carry customer-level data and are regenerated on demand.
 | `beekeeper_features_YYYY-MM.csv` | Beekeeper breakdown by domain group × feature, incl. MAU |
 | `lumapps_agents_YYYY-MM.csv` | LumApps Agents per agent: Jobs Done, users, tenants. Agent names are free text set by customers |
 
-`data/raw/` holds the twelve untouched per-tab responses (`<platform>_<tab>_<scope>_YYYY-MM.csv`)
-as an audit trail. The four files above are merged from them and are what the analytics read.
+`data/raw/` holds the twelve per-tab responses (`<platform>_<tab>_<scope>_YYYY-MM.csv`) as an
+audit trail. They are the Looker rows as returned, except that for AI & Search the
+`product_domain` value is written in the feature column (see above). The `all` and
+`features` files are merged from them and are what the analytics read; the agents file
+comes from its own query.
 
 **Lumapps scope:** the list of product domain groups is growing. Communication &
 Collaboration was the only one for a long time; **AI & Search** was added to Jobs Done in
