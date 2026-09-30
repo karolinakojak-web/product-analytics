@@ -3,7 +3,7 @@ name: monthly-jobs-done-article
 description: Write the monthly Jobs Done article covering LumApps and Beekeeper, from fresh Looker data, and check it against the data before handing it over.
 argument-hint: "[YYYY-MM] [editorial note]"
 disable-model-invocation: true
-allowed-tools: Bash(python3 jobs_done_post/prepare_data.py *), Bash(python3 jobs_done_post/check_article.py *)
+allowed-tools: Bash(python3 jobs_done_post/prepare_data.py), Bash(python3 jobs_done_post/prepare_data.py *), Bash(python3 jobs_done_post/check_article.py *)
 ---
 
 # Monthly Jobs Done article
@@ -19,10 +19,12 @@ location, so the paths below work as written.
 
 ## Steps
 
-1. **Fetch and analyse.**
+1. **Fetch and analyse, always on fresh data.** Never reuse data already on disk,
+   never pass `--no-fetch`: Looker revises history and upstream fixes land between runs.
+   The check refuses data more than 24 hours old; if it does, re-run this step.
 
    ```bash
-   python3 jobs_done_post/prepare_data.py --fetch [--month YYYY-MM] [--note "<text>"]
+   python3 jobs_done_post/prepare_data.py [--month YYYY-MM] [--note "<text>"]
    ```
 
    It pulls fresh data from Looker into `jobs_done_post/data/` and prints the analysis:
@@ -34,8 +36,10 @@ location, so the paths below work as written.
 2. **Load the context.** Read these before writing a word:
    - `jobs_done_post/CLAUDE.md`: what the metrics mean, how to read them, and the
      permanent data limitations.
-   - [references/writing-rules.md](references/writing-rules.md): every rule for the
-     article (structure, scope sentence, selection, wording, YoY, emoji, closing links).
+   - `jobs_done_post/writing-rules.md`: the rules shared with the quarterly article
+     (tone, staying inside the metric, trend language, emoji, scope sentence, go-live).
+   - [references/writing-rules.md](references/writing-rules.md): the monthly rules
+     (structure, selection, YoY, the Agents paragraph, closing links).
    - The reference articles it lists, then
      [references/april-2026.md](references/april-2026.md) for voice.
 
