@@ -10,7 +10,8 @@ Two families of checks:
            has: the July 2026 issue stated Content at -0.5% MoM when it had in
            fact grown +0.5%, which is the class of error this catches.
 
-  RULES    the editorial conventions recorded in CLAUDE.md. Deterministic, so
+  RULES    the editorial conventions recorded in
+           .claude/skills/monthly-jobs-done-article/references/writing-rules.md. Deterministic, so
            they never depend on anyone remembering them.
 
 Exit codes: 0 clean, 1 failures, 2 the article or its data could not be read.
@@ -26,7 +27,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 DATA_DIR = HERE / "data"
 
-# Authoritative emoji per feature, mirroring the list in CLAUDE.md.
+# Authoritative emoji per feature, mirroring the list in the writing rules
+# (.claude/skills/monthly-jobs-done-article/references/writing-rules.md).
 EMOJI = {
     "Content": "\U0001f4c4", "Chats": "\U0001f4ac", "Streams": "\U0001f4e1",
     "Spaces": "\U0001f3e0", "Posts": "\U0001f4dd", "Videos": "\U0001f3ac",
@@ -34,7 +36,7 @@ EMOJI = {
     "Shifts": "\U0001f4c5", "Forms": "\U0001f5c2️", "Shortcuts": "\U0001f517",
     "Campaigns": "\U0001f4e2", "Company Events": "\U0001f4c6", "Workflows": "⚙️",
     "Comments": "\U0001f5e8️", "Documents": "\U0001f4c1", "Referrals": "\U0001f91d",
-    "Agents": "\U0001f916",
+    "Agents": "\U0001f916", "Search": "\U0001f50d",
 }
 
 BANNED = [
@@ -73,7 +75,7 @@ SCOPE_SENTENCE_FROM = "2026-09"   # first issue carrying the sentence
 
 # Features whose data is backfilled before they joined Jobs Done. They stay out of
 # the scope sentence, and out of the article, until their go-live month.
-GO_LIVE = {"Agents": "2026-09"}
+GO_LIVE = {"Agents": "2026-09", "Search": "2026-09"}
 
 
 def fail(msg):
@@ -114,6 +116,36 @@ def load(platform):
         for r in csv.DictReader(fh):
             feat.setdefault(r["Feature"], {})[r["Calendar Month"]] = r
     return allr, feat
+
+
+def load_agents(platform):
+    """{agent: {month: row}} from the per-agent file, empty when there is none."""
+    f = sorted(DATA_DIR.glob(f"{platform}_agents_*.csv"))
+    if not f:
+        return {}
+    out = {}
+    with open(f[-1], encoding="utf-8") as fh:
+        for r in csv.DictReader(fh):
+            out.setdefault(r["Agent"], {})[r["Calendar Month"]] = r
+    return out
+
+
+def agent_values(agents, month):
+    """Figures the Agents paragraph may quote about individual agents."""
+    cur = {a: m[month] for a, m in agents.items() if m.get(month)}
+    total = sum(num(r["Jobs Done"]) for r in cur.values())
+    out = []
+    for a, r in cur.items():
+        jd, users = num(r["Jobs Done"]), num(r["Jobs Done Users"])
+        out += [("K", jd / 1e3), ("K", users / 1e3)]
+        if total:
+            out.append(("%", jd / total * 100))          # share of all agents
+        prev = agents[a].get(adj(month, -1))
+        if prev:
+            out += [("%", pct(jd, num(prev["Jobs Done"]))),
+                    ("%", pct(users, num(prev["Jobs Done Users"]))),
+                    ("K", num(prev["Jobs Done"]) / 1e3)]
+    return [(u, v) for u, v in out if v is not None]
 
 
 def platform_values(allr, month):
@@ -295,6 +327,7 @@ def main():
     # ---- figures ---------------------------------------------------------
     la_all, la_feat = load("lumapps")
     bk_all, bk_feat = load("beekeeper")
+    la_agents = load_agents("lumapps")
     check_numbers(overview, platform_values(la_all, month) + platform_values(bk_all, month),
                   "overview", failures)
     for plat, sec, (allr, feat) in (("lumapps", sections.get("lumapps", ""), (la_all, la_feat)),
@@ -307,6 +340,8 @@ def main():
         for p in sec.split("\n\n"):
             fm = re.search(r"\*\*([A-Z][\w &]*?)\*\*", p)
             vals = feature_values(feat, fm.group(1), month, allr) if fm else None
+            if fm and fm.group(1) == "Agents" and plat == "lumapps":
+                vals = (vals or []) + agent_values(la_agents, month)
             check_numbers(p, allowed + (vals or []), f"{plat}/{fm.group(1) if fm else 'intro'}",
                           failures)
 

@@ -144,6 +144,8 @@ def find_files() -> dict[str, str]:
         "beekeeper_all":   latest("beekeeper_all*.csv"),
         "lumapps_feat":    latest("lumapps_features_*.csv"),
         "beekeeper_feat":  latest("beekeeper_features*.csv"),
+        # optional: absent from data fetched before September 2026
+        "lumapps_agents":  latest("lumapps_agents_*.csv"),
     }
 
 
@@ -413,6 +415,64 @@ def print_movers(features: list[dict], platform_jd: float = 0.0) -> None:
                   f"{fmt_pct(r['mom_pct'])} MoM")
 
 
+def print_agents_section(path: str, features: list[dict], report_month: str) -> None:
+    """Per-agent detail for the Agents paragraph (experimental, from September 2026).
+
+    The paragraph gives the Agents total, then one or two agents picked from three
+    lists: the largest, the biggest absolute growth, and the widest adoption across
+    tenants. Growth is ranked on the absolute change, because at a few hundred Jobs
+    Done per agent a percentage swings wildly.
+    """
+    TOP = 3
+    prev_month = adj_month(report_month, -1)
+    by_agent: dict[str, dict] = {}
+    with open(path, encoding="utf-8") as fh:
+        for r in csv.DictReader(fh):
+            by_agent.setdefault(r["Agent"], {})[r["Calendar Month"]] = {
+                "jd": _parse_num(r["Jobs Done"]), "users": _parse_num(r["Jobs Done Users"]),
+                "tenants": _parse_num(r["Tenants"])}
+
+    rows = []
+    for name, months in by_agent.items():
+        cur = months.get(report_month)
+        if not cur or not cur["jd"]:
+            continue
+        prev = months.get(prev_month)
+        rows.append({"agent": name, **cur,
+                     "prev_jd": prev["jd"] if prev else 0,
+                     "abs_mom": cur["jd"] - (prev["jd"] if prev else 0),
+                     "mom_pct": pct(cur["jd"], prev["jd"]) if prev else None})
+    if not rows:
+        return
+
+    total = next((f for f in features if f["feature"] == "Agents"), None)
+    agents_jd = sum(r["jd"] for r in rows)
+    print(f"\n{'='*80}")
+    print("LUMAPPS — AGENTS DETAIL (experimental)")
+    print(f"{'='*80}")
+    if total:
+        print(f"  Agents total: {fmt_m(total['jd'])} JD ({int(total['jd']):,}), "
+              f"{fmt_pct(total['mom_pct'])} MoM, {fmt_m(total['jd_users'])} users, "
+              f"{len(rows)} agents used this month")
+    print("  Names are free text set by each customer, and several carry a customer name.")
+
+    def line(r):
+        new = "  (new this month)" if not r["prev_jd"] else ""
+        return (f"  - {r['agent']}: {int(r['jd']):,} JD ({r['jd'] / agents_jd * 100:.1f}% of Agents), "
+                f"{int(r['users']):,} users, {int(r['tenants'])} tenant(s), "
+                f"{r['abs_mom']:+,.0f} JD vs last month ({fmt_pct(r['mom_pct'])}){new}")
+
+    for title, key in (("LARGEST", lambda r: (-r["jd"],)),
+                       ("BIGGEST GROWTH (absolute)", lambda r: (-r["abs_mom"], -r["jd"])),
+                       ("WIDEST ADOPTION (tenants)", lambda r: (-r["tenants"], -r["jd"]))):
+        picks = sorted(rows, key=key)[:TOP]
+        if title.startswith("BIGGEST"):
+            picks = [r for r in picks if r["abs_mom"] > 0]
+        print(f"\n  {title}")
+        for r in picks:
+            print(line(r))
+
+
 def print_yearly_trends(company: str, features: list[dict]) -> None:
     """Summary of 12-month trajectory per feature."""
     print(f"\n{'='*80}")
@@ -436,10 +496,12 @@ def print_yearly_trends(company: str, features: list[dict]) -> None:
 # Three of the four dashboard tabs are pulled ("Month overview" is skipped —
 # it is a 1-month snapshot, redundant with the 13-month series). Each tab is
 # fetched at two scopes, "total" (platform-wide) and "features" (broken down
-# by product domain group and feature), giving 6 queries per platform.
+# by product domain group and feature), giving 6 queries per platform, plus one
+# per breakdown for groups read at product domain level (domain_level_groups).
 #
-# The dashboard tiles pivot on feature; we request the same data unpivoted so
-# it lands in long format, which is what the parsers above expect.
+# The explores are queried directly, never the dashboards, so a dashboard layout
+# change does not reach this code. Data is requested unpivoted so it lands in
+# long format, which is what the parsers above expect.
 #
 # Credentials come from the standard Looker SDK environment variables:
 #   LOOKERSDK_BASE_URL / LOOKERSDK_CLIENT_ID / LOOKERSDK_CLIENT_SECRET
@@ -464,6 +526,16 @@ LOOKER_PLATFORMS = {
             "fct_jobs_done__bi.calendar_date": TIME_FRAME,
             "fct_jobs_done__bi.day_selection": "last^_day^_of^_month",
         },
+        # AI & Search puts the agent's name in `feature`, one row per agent, and
+        # some of those names are customer names. The article stays at product
+        # domain level there (Agents, Search, Ask AI), so these groups are fetched
+        # with product_domain standing in for feature. A separate query rather than
+        # a sum over agents, since users do not add up across them.
+        "domain_level_groups": ["AI & Search"],
+        # The one domain the article also looks at per agent (experimental, from
+        # September 2026). Kept in its own file so the feature data stays at
+        # domain level.
+        "per_agent_domain": "Agents",
     },
     "beekeeper": {
         "dashboard": "product_bi::jobs_done",
@@ -507,23 +579,41 @@ def _header_for(field: str) -> str:
     return HEADER_FOR.get(field.split(".", 1)[-1], field)
 
 
-def _run(sdk, cfg: dict, measures: list[str], breakdown: bool) -> list[dict]:
+def _run(sdk, cfg: dict, measures: list[str], dims: list[str],
+         filters: dict | None = None) -> list[dict]:
     """Run one unpivoted inline query and return its JSON rows."""
     from looker_sdk import models40
-
-    dims = [f"{cfg['prefix']}.calendar_month"]
-    if breakdown:
-        dims += [f"{cfg['prefix']}.product_domain_group", f"{cfg['prefix']}.feature"]
 
     query = models40.WriteQuery(
         model=cfg["model"],
         view=cfg["view"],
         fields=dims + measures,
-        filters=dict(cfg["filters"]),
+        filters={**cfg["filters"], **(filters or {})},
         sorts=[f"{cfg['prefix']}.calendar_month desc"] + dims[1:],
         limit="5000",
     )
     return json.loads(sdk.run_inline_query(result_format="json", body=query))
+
+
+def _run_features(sdk, cfg: dict, measures: list[str]) -> list[dict]:
+    """Feature breakdown, with product_domain as the feature for domain-level groups.
+
+    Rows come back keyed on <prefix>.feature either way, so the caller never
+    sees the difference.
+    """
+    p = cfg["prefix"]
+    month, group, feature, domain = (f"{p}.calendar_month", f"{p}.product_domain_group",
+                                     f"{p}.feature", f"{p}.product_domain")
+    groups = cfg.get("domain_level_groups", [])
+    if not groups:
+        return _run(sdk, cfg, measures, [month, group, feature])
+
+    rows = _run(sdk, cfg, measures, [month, group, feature],
+                {group: ",".join(f"-{g}" for g in groups)})
+    for r in _run(sdk, cfg, measures, [month, group, domain], {group: ",".join(groups)}):
+        r[feature] = r.pop(domain)
+        rows.append(r)
+    return rows
 
 
 def _write_csv(path: Path, fields: list[str], rows: list[dict]) -> None:
@@ -566,10 +656,12 @@ def fetch_from_looker(report_month: str = "") -> str:
             measures = measures_for(cfg)
 
             for scope, breakdown in (("total", False), ("features", True)):
-                rows = _run(sdk, cfg, measures, breakdown)
                 dims = [f"{cfg['prefix']}.calendar_month"]
                 if breakdown:
                     dims += [f"{cfg['prefix']}.product_domain_group", f"{cfg['prefix']}.feature"]
+                    rows = _run_features(sdk, cfg, measures)
+                else:
+                    rows = _run(sdk, cfg, measures, dims)
 
                 raw_path = RAW_DIR / f"{platform}_{tab}_{scope}_{stamp}.csv"
                 _write_csv(raw_path, dims + measures, rows)
@@ -609,8 +701,26 @@ def fetch_from_looker(report_month: str = "") -> str:
 
         print(f"  [{platform}] merged -> {all_path.name}, {feat_path.name}", file=sys.stderr)
 
+        if cfg.get("per_agent_domain"):
+            written.append(_fetch_agents(sdk, cfg, DATA_DIR / f"{platform}_agents_{stamp}.csv"))
+
     print(f"[looker] {len(written)} files written\n", file=sys.stderr)
     return stamp
+
+
+AGENT_HEADERS = ["Calendar Month", "Agent", "Jobs Done", "Jobs Done Users", "Tenants"]
+
+
+def _fetch_agents(sdk, cfg: dict, path: Path) -> Path:
+    """One row per month x agent, for the per-agent detail of the Agents domain."""
+    p = cfg["prefix"]
+    dims = [f"{p}.calendar_month", f"{p}.feature"]
+    measures = [f"{p}.jobs_done_28d", f"{p}.active_users_28d", f"{p}.active_tenants_28d"]
+    rows = _run(sdk, cfg, measures, dims, {f"{p}.product_domain": cfg["per_agent_domain"]})
+    _merge_csv(path, AGENT_HEADERS,
+               [dict(zip(AGENT_HEADERS, (r.get(f) for f in dims + measures))) for r in rows])
+    print(f"  per-agent detail: {len(rows)} rows -> {path.name}", file=sys.stderr)
+    return path
 
 
 def _merge_csv(path: Path, headers: list[str], rows: list[dict]) -> None:
@@ -637,7 +747,7 @@ def main():
     parser.add_argument("--month", default="",
                         help="Report month YYYY-MM (defaults to the last complete month)")
     parser.add_argument("--fetch", action="store_true",
-                        help="Pull fresh CSVs from the Looker dashboards before analysing")
+                        help="Pull fresh CSVs from the Looker explores before analysing")
     parser.add_argument("--note", default="", metavar="TEXT",
                         help="Editorial context to surface at the top of the report, e.g. "
                              "\"the Agents feature was added this month, worth a mention\"")
@@ -647,14 +757,14 @@ def main():
         fetch_from_looker(args.month or default_report_month())
 
     files = find_files()
-    missing = [k for k, v in files.items() if not v]
+    missing = [k for k, v in files.items() if not v and k != "lumapps_agents"]
     if missing:
         sys.exit(f"Error: could not find files for: {missing}\nLooked in: {DATA_DIR}\n"
                  f"Run with --fetch to pull them from Looker.")
 
     print(f"[Files]", file=sys.stderr)
     for k, v in files.items():
-        print(f"  {k}: {Path(v).name}", file=sys.stderr)
+        print(f"  {k}: {Path(v).name if v else '(none)'}", file=sys.stderr)
 
     # Load data
     luma_all_rows  = read_all_csv(files["lumapps_all"])
@@ -707,6 +817,8 @@ def main():
 
     print_feature_section("Lumapps", luma_features, report_month)
     print_movers(luma_features, luma_jd)
+    if files["lumapps_agents"]:
+        print_agents_section(files["lumapps_agents"], luma_features, report_month)
     print_yearly_trends("Lumapps", luma_features)
 
     print_feature_section("Beekeeper", beek_features, report_month)

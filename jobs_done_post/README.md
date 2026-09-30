@@ -3,8 +3,8 @@
 Generates the monthly Jobs Done post covering LumApps and Beekeeper.
 
 `prepare_data.py` pulls the numbers from Looker and prints an analysis. The article
-itself is written from that output, following the rules in `CLAUDE.md`, and saved in
-`articles/`. `check_article.py` then verifies it.
+itself is written from that output by the `/monthly-jobs-done-article` Claude Code skill,
+and saved in `articles/`. `check_article.py` then verifies it.
 
 ## Setup (once)
 
@@ -38,22 +38,48 @@ shells, so scripts launched outside a terminal may not see them.
 
 ## Generating a month
 
+In Claude Code, from the repository root:
+
+```
+/monthly-jobs-done-article
+/monthly-jobs-done-article 2026-09
+/monthly-jobs-done-article 2026-09 Search and Agents joined Jobs Done this month, worth a mention
+```
+
+The skill runs the steps below, writes the article following its rules, and fixes
+whatever the check reports. The arguments are optional: a month, then an editorial note.
+
+### Running the script by hand
+
+From this folder:
+
 ```bash
 python3 prepare_data.py --fetch
 ```
 
-That pulls fresh data into `data/` and prints the analysis: platform totals with MAU,
-the feature breakdown by product domain, and three ranked lists telling you what to write
-about. Read `CLAUDE.md` for how to turn that into the article, then save it as
+That pulls fresh data into `data/` and prints the analysis:
+
+- platform totals with MAU, over 13 months;
+- the feature breakdown by product domain group;
+- three ranked lists telling you what to write about: biggest drivers of the month,
+  strongest relative moves, newly tracked features;
+- for LumApps, the *AGENTS DETAIL* (experimental): the Agents total, then the largest
+  agents, the biggest absolute growth and the widest adoption across tenants.
+
+The writing rules live in the skill (see *Layout*). Save the article as
 `articles/article_YYYY-MM.md`.
 
 ### Options
 
 | Option | What it does |
 |---|---|
-| `--fetch` | Pull fresh CSVs from Looker before analysing. Without it, the script reads whatever is already in `data/`. |
-| `--month 2026-08` | Target a specific report month. Defaults to the last complete calendar month. |
+| `--fetch` | Pull fresh CSVs from Looker before analysing. Without it, the script reads the latest files already in `data/`. |
+| `--month 2026-08` | Target a specific report month. By default: the last complete calendar month with `--fetch`, the latest month in `data/` without it. |
 | `--note "<text>"` | Pass editorial context for the month, for example a feature that just launched or an incident worth mentioning. It is printed at the top of the analysis and outranks the automatic ranking. |
+
+`--fetch` always pulls the last 15 complete months counted from today, whatever
+`--month` says. A report month must fall inside that window, and needs to be one of its
+last 3 months to have a year-over-year figure.
 
 Common combinations:
 
@@ -65,7 +91,7 @@ python3 prepare_data.py --fetch
 python3 prepare_data.py --month 2026-08
 
 # flag something the data alone cannot tell you
-python3 prepare_data.py --fetch --note "Agents launched this month, worth a mention"
+python3 prepare_data.py --fetch --note "Search and Agents joined Jobs Done this month, worth a mention"
 ```
 
 ## Checking the article
@@ -74,12 +100,17 @@ python3 prepare_data.py --fetch --note "Agents launched this month, worth a ment
 python3 check_article.py articles/article_2026-08.md
 ```
 
-It verifies that every figure in the article traces back to the CSVs, and that the
-editorial rules hold (structure, banned wording, feature count, emoji, year-over-year
-placement). It also checks that the scope sentence opening each platform section lists
-exactly the domains and features tracked that month. The scope grows over time, so this
-check catches a sentence copied from last month. A hook in `.claude/settings.json` runs it automatically whenever Claude saves
-an article, so you only need the command above after editing one by hand.
+It verifies that every figure in the article traces back to the CSVs, per-agent figures
+in the Agents paragraph included, and that the editorial rules hold (structure, banned
+wording, feature count, emoji, year-over-year placement). It also checks that the scope
+sentence opening each platform section lists exactly the domains and features tracked
+that month, leaving out features whose go-live month has not come yet (`GO_LIVE` in the
+script: Agents and Search, September 2026). The scope grows over time, so this check
+catches a sentence copied from last month. Figures written without a unit, such as
+"164 Jobs Done" or "8 customers", are not checked.
+
+A hook in `.claude/settings.json` runs it automatically whenever Claude saves an article,
+so you only need the command above after editing one by hand.
 
 Warnings are not failures. Quantity words like "most" or "half" are listed for you to
 confirm, because the script cannot judge them. That is deliberate: the August 2026 draft
@@ -90,14 +121,23 @@ claimed a month made up "most" of the previous drop when it was about a third.
 ```
 jobs_done_post/
 ├── README.md           this file
-├── CLAUDE.md           business context and the article writing rules
+├── CLAUDE.md           data sources, metric definitions, data limitations
 ├── prepare_data.py     Looker fetch + analysis
 ├── check_article.py    article verification
 ├── requirements.txt
 ├── .env.example
 ├── articles/           one article per month
 └── data/               gitignored, regenerated by --fetch
-    └── raw/            untouched per-tab responses, kept as an audit trail
+    ├── <platform>_all_YYYY-MM.csv        platform totals
+    ├── <platform>_features_YYYY-MM.csv   domain group x feature
+    ├── lumapps_agents_YYYY-MM.csv        LumApps Agents, per agent
+    └── raw/            per-tab responses, kept as an audit trail
+
+.claude/skills/monthly-jobs-done-article/
+├── SKILL.md                    the steps Claude follows
+└── references/
+    ├── writing-rules.md        every rule for the article
+    └── april-2026.md           voice benchmark
 ```
 
 `data/` is gitignored on purpose: these exports carry customer-level data. Regenerate it
@@ -112,4 +152,4 @@ with `--fetch` rather than sharing files.
 | `no data for lumapps in .../data` | Run with `--fetch` first. |
 | `month YYYY-MM missing from the data` | The month is outside the fetched window. Re-run `--fetch`. |
 | The hook never runs | Open `/hooks` once or restart the session. It needs `jq` and `python3` on the PATH. |
-| Figures do not match an old published article | Expected. Looker revises history, so a past month can return a different value than the one that was published. Do not restate an old month from memory. |
+| Figures do not match an old published article | Expected. Looker revises history, and a newly tracked feature comes with backfilled history: Search added 3.4M to LumApps' August 2026 total after that article was published. Do not restate an old month from memory. |
