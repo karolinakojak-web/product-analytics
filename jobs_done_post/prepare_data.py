@@ -25,7 +25,8 @@ from datetime import date
 from pathlib import Path
 from statistics import mean, stdev
 
-from jobs_done_common import LOOKER_PLATFORMS, looker_sdk_or_exit, run_features, run_query
+from jobs_done_common import (LOOKER_PLATFORMS, fmt_change, looker_sdk_or_exit, run_features,
+                              run_query)
 
 DATA_DIR = Path(__file__).parent / "data"
 
@@ -167,11 +168,11 @@ def sorted_months(rows: list[dict]) -> list[str]:
 
 
 def pct(a, b) -> float | None:
-    return round((a - b) / b * 100, 1) if b else None
+    return (a - b) / b * 100 if b else None
 
 
 def fmt_pct(v) -> str:
-    return f"{v:+.1f}%" if v is not None else "n/a"
+    return fmt_change(v)
 
 
 def fmt_m(v: float) -> str:

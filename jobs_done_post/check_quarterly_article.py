@@ -311,10 +311,6 @@ def main():
     for needle, what in [(opening, "standard opening")] + FIXED:
         if needle not in text:
             failures.append(f"missing {what}")
-    # A change written "+0.0%" or "-0.0%" hides a real, tiny move: two decimals or "flat".
-    for hit in re.finditer(r"[+-]0\.0%", text):
-        failures.append(f"'{hit.group(0)}': write a change under 0.05% with two decimals, or "
-                        f"'flat' when it rounds to 0.00%")
     # No MAU in the quarterly: "active users" would read as the whole active base.
     for hit in re.finditer(r"\bactive users?\b", text, re.I):
         failures.append(f"'{hit.group(0)}': the quarterly has no MAU, write 'Users Completing Jobs'")

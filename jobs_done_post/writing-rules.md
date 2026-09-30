@@ -13,6 +13,9 @@ The constants they rely on (emoji per feature, go-live months, banned wording) l
 - **Engaged and human** — write like a colleague sharing news, not like a dashboard export.
 - **Positive framing** where the data allows it. Lead with what's working before what isn't.
 - Use M for millions, K for thousands. Every claim has a number behind it.
+- **Never "+0.0%" or "-0.0%".** A change under 0.05% takes two decimals (-0.03%), and one
+  that rounds to 0.00% is written "flat". One decimal would hide a real move, and
+  its direction.
 - **Simple and direct.** Short sentences, ordinary words, one idea at a time. Say what
   happened, not what it signifies.
 - **Never let analytical vocabulary reach the prose.** The script's wording is for

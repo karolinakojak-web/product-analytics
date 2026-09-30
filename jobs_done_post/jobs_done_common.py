@@ -386,3 +386,7 @@ def check_wording(text, failures, warnings):
             failures.append(f"{why}: {hit.group(0)!r}")
     for hit in re.finditer(QUANTITY, text, re.I):
         warnings.append(f"quantity word {hit.group(0)!r} - confirm it against the figures")
+    # "+0.0%" or "-0.0%" hides a real, tiny move: write two decimals, or "flat".
+    for hit in re.finditer(r"[+-]0\.0%", text):
+        failures.append(f"'{hit.group(0)}': write a change under 0.05% with two decimals, or "
+                        f"'flat' when it rounds to 0.00%")
