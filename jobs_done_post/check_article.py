@@ -118,6 +118,36 @@ def load(platform):
     return allr, feat
 
 
+def load_agents(platform):
+    """{agent: {month: row}} from the per-agent file, empty when there is none."""
+    f = sorted(DATA_DIR.glob(f"{platform}_agents_*.csv"))
+    if not f:
+        return {}
+    out = {}
+    with open(f[-1], encoding="utf-8") as fh:
+        for r in csv.DictReader(fh):
+            out.setdefault(r["Agent"], {})[r["Calendar Month"]] = r
+    return out
+
+
+def agent_values(agents, month):
+    """Figures the Agents paragraph may quote about individual agents."""
+    cur = {a: m[month] for a, m in agents.items() if m.get(month)}
+    total = sum(num(r["Jobs Done"]) for r in cur.values())
+    out = []
+    for a, r in cur.items():
+        jd, users = num(r["Jobs Done"]), num(r["Jobs Done Users"])
+        out += [("K", jd / 1e3), ("K", users / 1e3)]
+        if total:
+            out.append(("%", jd / total * 100))          # share of all agents
+        prev = agents[a].get(adj(month, -1))
+        if prev:
+            out += [("%", pct(jd, num(prev["Jobs Done"]))),
+                    ("%", pct(users, num(prev["Jobs Done Users"]))),
+                    ("K", num(prev["Jobs Done"]) / 1e3)]
+    return [(u, v) for u, v in out if v is not None]
+
+
 def platform_values(allr, month):
     """Every figure the overview and platform intro may legitimately quote."""
     cur, prev, yoy = allr.get(month), allr.get(adj(month, -1)), allr.get(adj(month, -12))
@@ -297,6 +327,7 @@ def main():
     # ---- figures ---------------------------------------------------------
     la_all, la_feat = load("lumapps")
     bk_all, bk_feat = load("beekeeper")
+    la_agents = load_agents("lumapps")
     check_numbers(overview, platform_values(la_all, month) + platform_values(bk_all, month),
                   "overview", failures)
     for plat, sec, (allr, feat) in (("lumapps", sections.get("lumapps", ""), (la_all, la_feat)),
@@ -309,6 +340,8 @@ def main():
         for p in sec.split("\n\n"):
             fm = re.search(r"\*\*([A-Z][\w &]*?)\*\*", p)
             vals = feature_values(feat, fm.group(1), month, allr) if fm else None
+            if fm and fm.group(1) == "Agents" and plat == "lumapps":
+                vals = (vals or []) + agent_values(la_agents, month)
             check_numbers(p, allowed + (vals or []), f"{plat}/{fm.group(1) if fm else 'intro'}",
                           failures)
 

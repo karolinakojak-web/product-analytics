@@ -96,6 +96,7 @@ carry customer-level data and are regenerated on demand.
 | `beekeeper_all_YYYY-MM.csv` | Beekeeper platform totals: same columns |
 | `lumapps_features_YYYY-MM.csv` | Lumapps breakdown by domain group × feature, incl. MAU |
 | `beekeeper_features_YYYY-MM.csv` | Beekeeper breakdown by domain group × feature, incl. MAU |
+| `lumapps_agents_YYYY-MM.csv` | LumApps Agents per agent: Jobs Done, users, tenants. Agent names are free text set by customers |
 
 `data/raw/` holds the twelve untouched per-tab responses (`<platform>_<tab>_<scope>_YYYY-MM.csv`)
 as an audit trail. The four files above are merged from them and are what the analytics read.
@@ -108,8 +109,9 @@ a third domain is on the way.
 **AI & Search is read at product domain level.** In the explore, `feature` holds one row
 per agent, named after the agent, and some names are customer names. `prepare_data.py`
 fetches this group with `product_domain` in place of `feature`, so the data shows
-`Agents`, `Search` and, once it has data, `Ask AI`. Never break Agents down per agent in
-an article. The other groups keep `feature`: for Communication & Collaboration,
+`Agents`, `Search` and, once it has data, `Ask AI`. The per-agent rows are fetched
+separately into `lumapps_agents_YYYY-MM.csv`, only for the experimental agent detail of the
+article. The other groups keep `feature`: for Communication & Collaboration,
 `product_domain` does not match the feature (Comments and Reactions span several domains).
 
 Articles up to August 2026 carried a standing note saying LumApps Jobs Done covered only

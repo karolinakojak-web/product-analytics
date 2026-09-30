@@ -110,8 +110,24 @@ real go-live date before calling anything new. Known cases: **Agents** and **Sea
 LumApps) show history from 2025 or early 2026 but were only added to Jobs Done in
 **September 2026**. They must not appear in any article before then.
 
-**Agents is one feature.** Never name or rank individual agents: the data does not carry
-them, and many are named after customers.
+### The Agents paragraph (LumApps, experimental, from September 2026)
+
+When Agents is covered, it gets one 🤖 paragraph, which counts as one of the 2–3 features:
+
+1. One sentence on all agents together: the **Agents** total Jobs Done and its MoM, from
+   the feature breakdown.
+2. Then one or two agents, taken from the *AGENTS DETAIL* lists of the script (largest,
+   biggest growth, widest adoption). Give each one figure that says why it stands out:
+   its share of all agent Jobs Done, its growth in Jobs Done, or how many tenants use it.
+
+Name an agent exactly as the script prints it, customer name included: the analyst
+removes it before publishing if needed. Prefer absolute figures for a single agent. At a
+few hundred Jobs Done, "+542.9%" says less than "up 76 Jobs Done". Do not pick the agent
+literally named "Agents": its name says nothing to a reader.
+
+```
+🤖 **Agents** reached 3.9K Jobs Done (-33.5% MoM). Routing agent carries 41.8% of them, across 8 customers, while CSE Request Assistant appeared this month with 164 Jobs Done.
+```
 
 Everything else gets no mention. Stable features with unremarkable numbers get no mention.
 
