@@ -10,7 +10,8 @@ Two families of checks:
            has: the July 2026 issue stated Content at -0.5% MoM when it had in
            fact grown +0.5%, which is the class of error this catches.
 
-  RULES    the editorial conventions recorded in CLAUDE.md. Deterministic, so
+  RULES    the editorial conventions recorded in
+           .claude/skills/monthly-jobs-done-article/references/writing-rules.md. Deterministic, so
            they never depend on anyone remembering them.
 
 Exit codes: 0 clean, 1 failures, 2 the article or its data could not be read.
@@ -26,7 +27,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 DATA_DIR = HERE / "data"
 
-# Authoritative emoji per feature, mirroring the list in CLAUDE.md.
+# Authoritative emoji per feature, mirroring the list in the writing rules
+# (.claude/skills/monthly-jobs-done-article/references/writing-rules.md).
 EMOJI = {
     "Content": "\U0001f4c4", "Chats": "\U0001f4ac", "Streams": "\U0001f4e1",
     "Spaces": "\U0001f3e0", "Posts": "\U0001f4dd", "Videos": "\U0001f3ac",
