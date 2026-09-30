@@ -1,17 +1,23 @@
 # Jobs Done: data and metrics
 
-This folder produces the monthly Jobs Done article. **To write it, use the
-`/monthly-jobs-done-article` skill** (`.claude/skills/monthly-jobs-done-article/`): it
-holds the step-by-step and every writing rule. This file keeps what is true whatever you
-are doing here, writing an article or changing the scripts: where the data comes from,
-what the metrics mean, and how to read them.
+This folder produces the monthly and the quarterly Jobs Done articles. **To write one,
+use its skill**: `/monthly-jobs-done-article` or `/quarterly-jobs-done-article`
+(`.claude/skills/`). Each holds its step-by-step and its own rules; `writing-rules.md`
+here holds the rules they share, and `jobs_done_common.py` the Looker config and
+constants both scripts import. This file keeps what is true whatever you are doing here,
+writing an article or changing the scripts: where the data comes from, what the metrics
+mean, and how to read them.
 
 ---
 
 ## Automatic quality check
 
-`check_article.py` verifies a written article. A **Claude Code hook runs it on every save**
-of `articles/article_*.md`, configured in `.claude/settings.json` at the repo root. Nothing
+`check_article.py` verifies a written monthly article, `check_quarterly_article.py` a
+quarterly one. A **Claude Code hook runs the right one on every save** of
+`articles/article_*.md` or `articles/quarterly_*.md`, configured in `.claude/settings.json`
+at the repo root. What follows describes the monthly check; the quarterly one adds the
+shape of the article (one section per domain group, one block per feature, arrows, top 3
+companies in order). Nothing
 to remember and nothing to launch: write the article, the check runs, failures come back
 as an error. It can also be run by hand:
 
@@ -37,14 +43,15 @@ python3 check_article.py articles/article_2026-08.md
 - Warnings are not failures. The August 2026 issue shipped a wrong "most of July's drop"
   that only a human could catch, which is exactly why quantity words are surfaced.
 - A failure can mean the data is stale rather than the article being wrong. Re-run
-  `python3 prepare_data.py --fetch` before assuming the prose is at fault.
+  `python3 prepare_data.py` before assuming the prose is at fault.
 - If the hook seems not to run, open `/hooks` once or restart the session. It needs `jq`
   and `python3` on the PATH.
 
 **One-time setup:** see `README.md` (dependencies and Looker API key).
 
 **Options:**
-- `--fetch` pull fresh CSVs from Looker before analysing. Without it, the script reads whatever is already in `data/`.
+- Every run fetches fresh CSVs from Looker; the checks refuse data more than 24 hours old.
+  `--no-fetch` re-reads `data/` for work on the script only, never for an article.
 - `--month 2026-04` target a specific report month. Defaults to the last complete calendar month.
 - `--note "<text>"` pass editorial context for the month (a new feature, a known incident, an angle to take).
 
@@ -52,7 +59,7 @@ python3 check_article.py articles/article_2026-08.md
 
 ## Where the data comes from
 
-`--fetch` queries the Looker API directly. There is no manual CSV export step any more.
+Each run queries the Looker API directly. There is no manual CSV export step any more.
 
 | Platform | LookML dashboard | Explore |
 |---|---|---|
@@ -179,7 +186,14 @@ Jobs Done focuses on moments when a user **gets the core value** of a feature. E
 
 ## Known permanent data limitations
 
-- **Customer-level breakdowns** not in the CSV export — available in Looker with filters.
+- **Customer-level breakdowns** are only fetched for the quarterly top 3 companies
+  (`data/quarterly/<platform>_companies_*.csv`).
+- **Never sum Jobs Done through the LumApps company join.** Grouping
+  `fct_jobs_done__bi` by a `dim_lumapps_x_sf_organizations` field inflates the sums: in
+  Q2 2026 it doubled a large customer's Videos Jobs Done (twice its real 583,683). The join is
+  declared `many_to_one` but the table holds several rows per organization.
+  `prepare_quarterly.py` ranks on `tenant_gid` and only then looks the names up. Company
+  names come from `dim_lumapps_x_sf_organizations` only, never `dim_organizations`.
 - **Users and MAU cannot be summed across domain groups.** They count *unique* users, so a
   user active in two domains is counted once at platform level but twice if the rows are
   added up. This is why the `all` files have no domain column: platform totals are queried
@@ -188,6 +202,18 @@ Jobs Done focuses on moments when a user **gets the core value** of a feature. E
   (32.9M) no longer reproduces — the explore now returns 34.3M for that month. Do not
   restate an old month from memory; re-read it from the current output.
 - **Workflows (Beekeeper) users metric** always 0 — do not report it. Volume is valid.
+- **Workflows (Beekeeper) spiked at the end of February 2026**: the weeks of 23 February
+  and 2 March hold about three times the usual weekly Jobs Done, 98% of it from a single
+  customer. It inflates Q1 2026, so Q2 2026 reads as a -13.5% drop while the
+  usual weekly level rose. `prepare_quarterly.py` detects such steps and spikes (see
+  `weekly_anomaly` in `jobs_done_common.py`) and names the companies behind them.
+- **Search counts suggestion clicks only from 6 August 2026.** A Search Job Done is a
+  search session with at least one click, and `SearchClickSuggestionAction` first appears
+  in `fct_user_actions` on that day (checked in `hm-prod-go-cell-001`: 690,608 events in
+  64 organizations by the end of August, none before). Search Jobs Done stepped from
+  about 530K to about 930K a week at that point, while result clicks stayed flat. Any
+  comparison across that date (August 2026 MoM, Q3 2026 QoQ) mostly measures the new
+  event, not more searching: say so rather than reading it as growth.
 - **MAU** comes from the `_all_` files. If those files are missing, note MAU is unavailable.
 
 ---

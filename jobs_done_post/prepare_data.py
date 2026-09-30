@@ -10,21 +10,22 @@ Reads four CSV files from the data/ subfolder:
 Outputs structured analytics to stdout.
 
 Usage:
-    python3 prepare_data.py                      analyse the CSVs already in data/
-    python3 prepare_data.py --fetch              pull fresh CSVs from Looker, then analyse
+    python3 prepare_data.py                      pull fresh CSVs from Looker, then analyse
     python3 prepare_data.py --month 2026-05      target a specific report month
+    python3 prepare_data.py --no-fetch           re-read data/ (script work only, never
+                                                 for an article: articles need fresh data)
 """
 
 import argparse
 import csv
 import glob
-import json
-import os
 import re
 import sys
 from datetime import date
 from pathlib import Path
 from statistics import mean, stdev
+
+from jobs_done_common import LOOKER_PLATFORMS, looker_sdk_or_exit, run_features, run_query
 
 DATA_DIR = Path(__file__).parent / "data"
 
@@ -515,46 +516,6 @@ RAW_DIR = DATA_DIR / "raw"
 TIME_FRAME = "15 month ago for 15 month"
 REPORTED_MONTHS = 13
 
-LOOKER_PLATFORMS = {
-    "lumapps": {
-        "dashboard": "base::jobs_done",
-        "model": "base",
-        "view": "fct_jobs_done__bi",
-        "prefix": "fct_jobs_done__bi",
-        "mau_field": "fct_user_metrics__bi.total_mau",
-        "filters": {
-            "fct_jobs_done__bi.calendar_date": TIME_FRAME,
-            "fct_jobs_done__bi.day_selection": "last^_day^_of^_month",
-        },
-        # AI & Search puts the agent's name in `feature`, one row per agent, and
-        # some of those names are customer names. The article stays at product
-        # domain level there (Agents, Search, Ask AI), so these groups are fetched
-        # with product_domain standing in for feature. A separate query rather than
-        # a sum over agents, since users do not add up across them.
-        "domain_level_groups": ["AI & Search"],
-        # The one domain the article also looks at per agent (experimental, from
-        # September 2026). Kept in its own file so the feature data stays at
-        # domain level.
-        "per_agent_domain": "Agents",
-    },
-    "beekeeper": {
-        "dashboard": "product_bi::jobs_done",
-        "model": "product_bi",
-        "view": "jobs_done",
-        "prefix": "jobs_done",
-        "mau_field": "user_metrics.mau",
-        # Beekeeper tiles carry tenant scoping that LumApps does not have.
-        # Dropping these would silently change every number. The tab tiles leave
-        # tenants.is_customer empty, so we do too.
-        "filters": {
-            "jobs_done.calendar_date": TIME_FRAME,
-            "jobs_done.day_selection": "last^_day^_of^_month",
-            "jobs_done.jobs_done_version_param": "2026.1",
-            "tenants.account_selection": "commercial^_all",
-        },
-    },
-}
-
 # tab name -> measures to pull for it
 LOOKER_TABS = {
     "jobs_done": lambda cfg: [f"{cfg['prefix']}.jobs_done_28d"],
@@ -579,41 +540,21 @@ def _header_for(field: str) -> str:
     return HEADER_FOR.get(field.split(".", 1)[-1], field)
 
 
+def _monthly_filters(cfg: dict) -> dict:
+    p = cfg["prefix"]
+    return {f"{p}.calendar_date": TIME_FRAME, f"{p}.day_selection": "last^_day^_of^_month"}
+
+
 def _run(sdk, cfg: dict, measures: list[str], dims: list[str],
          filters: dict | None = None) -> list[dict]:
-    """Run one unpivoted inline query and return its JSON rows."""
-    from looker_sdk import models40
-
-    query = models40.WriteQuery(
-        model=cfg["model"],
-        view=cfg["view"],
-        fields=dims + measures,
-        filters={**cfg["filters"], **(filters or {})},
-        sorts=[f"{cfg['prefix']}.calendar_month desc"] + dims[1:],
-        limit="5000",
-    )
-    return json.loads(sdk.run_inline_query(result_format="json", body=query))
+    """Run one unpivoted monthly query and return its JSON rows."""
+    return run_query(sdk, cfg, dims, measures, {**_monthly_filters(cfg), **(filters or {})})
 
 
 def _run_features(sdk, cfg: dict, measures: list[str]) -> list[dict]:
-    """Feature breakdown, with product_domain as the feature for domain-level groups.
-
-    Rows come back keyed on <prefix>.feature either way, so the caller never
-    sees the difference.
-    """
-    p = cfg["prefix"]
-    month, group, feature, domain = (f"{p}.calendar_month", f"{p}.product_domain_group",
-                                     f"{p}.feature", f"{p}.product_domain")
-    groups = cfg.get("domain_level_groups", [])
-    if not groups:
-        return _run(sdk, cfg, measures, [month, group, feature])
-
-    rows = _run(sdk, cfg, measures, [month, group, feature],
-                {group: ",".join(f"-{g}" for g in groups)})
-    for r in _run(sdk, cfg, measures, [month, group, domain], {group: ",".join(groups)}):
-        r[feature] = r.pop(domain)
-        rows.append(r)
-    return rows
+    """Monthly feature breakdown (AI & Search at product domain level)."""
+    return run_features(sdk, cfg, f"{cfg['prefix']}.calendar_month", measures,
+                        _monthly_filters(cfg))
 
 
 def _write_csv(path: Path, fields: list[str], rows: list[dict]) -> None:
@@ -632,17 +573,7 @@ def fetch_from_looker(report_month: str = "") -> str:
     them into the four data/ files the analytics below read.
     Returns the month stamp used in the filenames.
     """
-    try:
-        import looker_sdk
-    except ImportError:
-        sys.exit("Error: looker-sdk is not installed.  pip install -r requirements.txt")
-
-    for var in ("LOOKERSDK_BASE_URL", "LOOKERSDK_CLIENT_ID", "LOOKERSDK_CLIENT_SECRET"):
-        if not os.environ.get(var):
-            sys.exit(f"Error: {var} is not set. See .env.example.")
-
-    sdk = looker_sdk.init40()
-    print(f"[looker] {os.environ['LOOKERSDK_BASE_URL']}", file=sys.stderr)
+    sdk = looker_sdk_or_exit()
 
     stamp = report_month
     written = []
@@ -747,20 +678,25 @@ def main():
     parser.add_argument("--month", default="",
                         help="Report month YYYY-MM (defaults to the last complete month)")
     parser.add_argument("--fetch", action="store_true",
-                        help="Pull fresh CSVs from the Looker explores before analysing")
+                        help="Kept for compatibility: fetching is the default")
+    parser.add_argument("--no-fetch", action="store_true",
+                        help="Re-read data/ without querying Looker. For work on the script "
+                             "only: an article must be written on freshly fetched data")
     parser.add_argument("--note", default="", metavar="TEXT",
                         help="Editorial context to surface at the top of the report, e.g. "
                              "\"the Agents feature was added this month, worth a mention\"")
     args = parser.parse_args()
 
-    if args.fetch:
+    if args.no_fetch:
+        print("⚠️ --no-fetch: reading data/ as it is. Not for an article.", file=sys.stderr)
+    else:
         fetch_from_looker(args.month or default_report_month())
 
     files = find_files()
     missing = [k for k, v in files.items() if not v and k != "lumapps_agents"]
     if missing:
         sys.exit(f"Error: could not find files for: {missing}\nLooked in: {DATA_DIR}\n"
-                 f"Run with --fetch to pull them from Looker.")
+                 f"Run without --no-fetch to pull them from Looker.")
 
     print(f"[Files]", file=sys.stderr)
     for k, v in files.items():
