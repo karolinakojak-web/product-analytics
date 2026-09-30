@@ -59,17 +59,22 @@ python3 check_article.py articles/article_2026-08.md
 | LumApps | [`base::jobs_done`](https://bi.lumapps.com/dashboards/base%3A%3Ajobs_done) — defined in the `internal/bi` repo | `base` / `fct_jobs_done__bi` |
 | Beekeeper | [`product_bi::jobs_done`](https://bi.lumapps.com/dashboards/product_bi%3A%3Ajobs_done) — defined in the `looker` repo | `product_bi` / `jobs_done` |
 
-Both dashboards have four tabs. Three are pulled — **Jobs Done**, **Users Completing
-Jobs** and **Frequency**. The fourth, *Month overview*, is skipped: it is a one-month
-snapshot already contained in the 13-month series. Each tab is fetched at two scopes
-(platform total, and broken down by domain group + feature), so 6 queries per platform.
+**The script never reads the dashboards.** It queries the explores directly, so a change
+to a dashboard's layout does not affect it; a change to the explore or its dbt model does.
 
-The dashboard tiles pivot on feature. The API requests the same data **unpivoted**, so
-it arrives in long format with one row per month × domain × feature.
+Both dashboards have four tabs. The script pulls the measures of three of them,
+**Jobs Done**, **Users Completing Jobs** and **Frequency**. The fourth, *Month overview*,
+is a one-month snapshot already contained in the 13-month series. Each tab is fetched at
+two scopes (platform total, and broken down by domain group + feature), so 6 queries per
+platform, plus one per scope for the AI & Search domain level (see *Data files*).
 
-The *Users Completing Jobs* tab shows four looks where the others show two, but they hold
-only two distinct measures (`active_users_28d`, MAU) across the two scopes — the extra two
-are subsets. Everything else on the tabs (`MoM %`, `Users Completing Jobs / MAU`) is a
+The data arrives in long format, one row per month × domain × feature. Since September
+2026 the LumApps dashboard has no per-feature tiles any more: each tab shows the total,
+and a single feature is viewed with the *Feature* filter. Its *Product Domain Group*
+filter is required and defaults to Communication & Collaboration, so the default view
+shows a lower LumApps total than the article, which covers every domain.
+
+The *Users Completing Jobs* tab holds two measures (`active_users_28d`, MAU). Everything else on the tabs (`MoM %`, `Users Completing Jobs / MAU`) is a
 Looker **table calculation**, computed at render time and never stored, so the script
 recomputes those itself. MAU is carried down to feature grain, which is what gives the
 UCJ/MAU reach figure per feature.
@@ -97,8 +102,15 @@ as an audit trail. The four files above are merged from them and are what the an
 
 **Lumapps scope:** the list of product domain groups is growing. Communication &
 Collaboration was the only one for a long time; **AI & Search** was added to Jobs Done in
-**September 2026** (single `Agents` feature, small volume, earlier data is backfill), and
+**September 2026** with two features, Search and Agents (earlier data is backfill), and
 a third domain is on the way.
+
+**AI & Search is read at product domain level.** In the explore, `feature` holds one row
+per agent, named after the agent, and some names are customer names. `prepare_data.py`
+fetches this group with `product_domain` in place of `feature`, so the data shows
+`Agents`, `Search` and, once it has data, `Ask AI`. Never break Agents down per agent in
+an article. The other groups keep `feature`: for Communication & Collaboration,
+`product_domain` does not match the feature (Comments and Reactions span several domains).
 
 Articles up to August 2026 carried a standing note saying LumApps Jobs Done covered only
 Communication & Collaboration. **That note is retired** — it stopped being true. Do not

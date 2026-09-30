@@ -36,7 +36,7 @@ EMOJI = {
     "Shifts": "\U0001f4c5", "Forms": "\U0001f5c2️", "Shortcuts": "\U0001f517",
     "Campaigns": "\U0001f4e2", "Company Events": "\U0001f4c6", "Workflows": "⚙️",
     "Comments": "\U0001f5e8️", "Documents": "\U0001f4c1", "Referrals": "\U0001f91d",
-    "Agents": "\U0001f916",
+    "Agents": "\U0001f916", "Search": "\U0001f50d",
 }
 
 BANNED = [
@@ -75,7 +75,7 @@ SCOPE_SENTENCE_FROM = "2026-09"   # first issue carrying the sentence
 
 # Features whose data is backfilled before they joined Jobs Done. They stay out of
 # the scope sentence, and out of the article, until their go-live month.
-GO_LIVE = {"Agents": "2026-09"}
+GO_LIVE = {"Agents": "2026-09", "Search": "2026-09"}
 
 
 def fail(msg):

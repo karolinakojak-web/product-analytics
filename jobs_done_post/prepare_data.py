@@ -436,10 +436,12 @@ def print_yearly_trends(company: str, features: list[dict]) -> None:
 # Three of the four dashboard tabs are pulled ("Month overview" is skipped —
 # it is a 1-month snapshot, redundant with the 13-month series). Each tab is
 # fetched at two scopes, "total" (platform-wide) and "features" (broken down
-# by product domain group and feature), giving 6 queries per platform.
+# by product domain group and feature), giving 6 queries per platform, plus one
+# per breakdown for groups read at product domain level (domain_level_groups).
 #
-# The dashboard tiles pivot on feature; we request the same data unpivoted so
-# it lands in long format, which is what the parsers above expect.
+# The explores are queried directly, never the dashboards, so a dashboard layout
+# change does not reach this code. Data is requested unpivoted so it lands in
+# long format, which is what the parsers above expect.
 #
 # Credentials come from the standard Looker SDK environment variables:
 #   LOOKERSDK_BASE_URL / LOOKERSDK_CLIENT_ID / LOOKERSDK_CLIENT_SECRET
@@ -464,6 +466,12 @@ LOOKER_PLATFORMS = {
             "fct_jobs_done__bi.calendar_date": TIME_FRAME,
             "fct_jobs_done__bi.day_selection": "last^_day^_of^_month",
         },
+        # AI & Search puts the agent's name in `feature`, one row per agent, and
+        # some of those names are customer names. The article stays at product
+        # domain level there (Agents, Search, Ask AI), so these groups are fetched
+        # with product_domain standing in for feature. A separate query rather than
+        # a sum over agents, since users do not add up across them.
+        "domain_level_groups": ["AI & Search"],
     },
     "beekeeper": {
         "dashboard": "product_bi::jobs_done",
@@ -507,23 +515,41 @@ def _header_for(field: str) -> str:
     return HEADER_FOR.get(field.split(".", 1)[-1], field)
 
 
-def _run(sdk, cfg: dict, measures: list[str], breakdown: bool) -> list[dict]:
+def _run(sdk, cfg: dict, measures: list[str], dims: list[str],
+         filters: dict | None = None) -> list[dict]:
     """Run one unpivoted inline query and return its JSON rows."""
     from looker_sdk import models40
-
-    dims = [f"{cfg['prefix']}.calendar_month"]
-    if breakdown:
-        dims += [f"{cfg['prefix']}.product_domain_group", f"{cfg['prefix']}.feature"]
 
     query = models40.WriteQuery(
         model=cfg["model"],
         view=cfg["view"],
         fields=dims + measures,
-        filters=dict(cfg["filters"]),
+        filters={**cfg["filters"], **(filters or {})},
         sorts=[f"{cfg['prefix']}.calendar_month desc"] + dims[1:],
         limit="5000",
     )
     return json.loads(sdk.run_inline_query(result_format="json", body=query))
+
+
+def _run_features(sdk, cfg: dict, measures: list[str]) -> list[dict]:
+    """Feature breakdown, with product_domain as the feature for domain-level groups.
+
+    Rows come back keyed on <prefix>.feature either way, so the caller never
+    sees the difference.
+    """
+    p = cfg["prefix"]
+    month, group, feature, domain = (f"{p}.calendar_month", f"{p}.product_domain_group",
+                                     f"{p}.feature", f"{p}.product_domain")
+    groups = cfg.get("domain_level_groups", [])
+    if not groups:
+        return _run(sdk, cfg, measures, [month, group, feature])
+
+    rows = _run(sdk, cfg, measures, [month, group, feature],
+                {group: ",".join(f"-{g}" for g in groups)})
+    for r in _run(sdk, cfg, measures, [month, group, domain], {group: ",".join(groups)}):
+        r[feature] = r.pop(domain)
+        rows.append(r)
+    return rows
 
 
 def _write_csv(path: Path, fields: list[str], rows: list[dict]) -> None:
@@ -566,10 +592,12 @@ def fetch_from_looker(report_month: str = "") -> str:
             measures = measures_for(cfg)
 
             for scope, breakdown in (("total", False), ("features", True)):
-                rows = _run(sdk, cfg, measures, breakdown)
                 dims = [f"{cfg['prefix']}.calendar_month"]
                 if breakdown:
                     dims += [f"{cfg['prefix']}.product_domain_group", f"{cfg['prefix']}.feature"]
+                    rows = _run_features(sdk, cfg, measures)
+                else:
+                    rows = _run(sdk, cfg, measures, dims)
 
                 raw_path = RAW_DIR / f"{platform}_{tab}_{scope}_{stamp}.csv"
                 _write_csv(raw_path, dims + measures, rows)

@@ -48,7 +48,7 @@ Each `## LumApps` and `## Beekeeper` section starts with one sentence listing th
 domain groups Jobs Done covers, each with its features, before any commentary:
 
 ```
-Jobs Done covers Communication & Collaboration (Content, Posts, Comments, Reactions, Spaces, Videos) and AI & Search (Agents).
+Jobs Done covers Communication & Collaboration (Content, Posts, Comments, Reactions, Spaces, Videos) and AI & Search (Search, Agents).
 
 Jobs Done covers Communication & Collaboration (Streams, Chats, Comments, Reactions, Documents, Company Events), Work & Automation (Tasks, Forms, Shifts, Shortcuts, Workflows), People & Growth (Surveys, Referrals) and Channels (Campaigns).
 ```
@@ -57,7 +57,7 @@ Jobs Done covers Communication & Collaboration (Streams, Chats, Comments, Reacti
 growing: AI & Search joined LumApps in September 2026 and another domain is on the way.
 Rebuild both sentences from the domain groups and features in the script output. Within a
 domain, list the features from largest to smallest by Jobs Done. A feature listed in
-`GO_LIVE` in `jobs_done_post/check_article.py` (currently Agents, from September 2026) stays out until
+`GO_LIVE` in `jobs_done_post/check_article.py` (currently Agents and Search, from September 2026) stays out until
 its go-live month, even though its backfilled data already shows up.
 
 `check_article.py` compares each sentence with the data for the report month and fails
@@ -106,9 +106,12 @@ Pick in this order:
 
 **A short history does not mean a recent launch.** The explore backfills data when a
 feature is onboarded, so this list flags backfilled features, not new ones. Check the
-real go-live date before calling anything new. Known case: **Agents** (AI & Search,
-LumApps) shows history from early 2026 but was only added to Jobs Done in **September
-2026** — it must not appear in any article before then.
+real go-live date before calling anything new. Known cases: **Agents** and **Search** (AI & Search,
+LumApps) show history from 2025 or early 2026 but were only added to Jobs Done in
+**September 2026**. They must not appear in any article before then.
+
+**Agents is one feature.** Never name or rank individual agents: the data does not carry
+them, and many are named after customers.
 
 Everything else gets no mention. Stable features with unremarkable numbers get no mention.
 
@@ -185,7 +188,7 @@ python3 jobs_done_post/prepare_data.py --note "Agents was added to LumApps Jobs 
 ## Emojis for features
 
 This list is authoritative — use it even if an older article used a different glyph.
-📄 Content · 💬 Chats · 📡 Streams · 🏠 Spaces · 📝 Posts · 🎬 Videos · 👍 Reactions · 📊 Surveys · ☑️ Tasks · 📅 Shifts · 🗂️ Forms · 🔗 Shortcuts · 📢 Campaigns · 📆 Company Events · ⚙️ Workflows · 🗨️ Comments · 📁 Documents · 🤝 Referrals · 🤖 Agents
+📄 Content · 💬 Chats · 📡 Streams · 🏠 Spaces · 📝 Posts · 🎬 Videos · 👍 Reactions · 📊 Surveys · ☑️ Tasks · 📅 Shifts · 🗂️ Forms · 🔗 Shortcuts · 📢 Campaigns · 📆 Company Events · ⚙️ Workflows · 🗨️ Comments · 📁 Documents · 🤝 Referrals · 🤖 Agents · 🔍 Search
 
 ## Close each company section
 
