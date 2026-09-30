@@ -37,7 +37,12 @@ Run everything from the repository root.
    investigate (see *Steps and spikes* in the quarterly rules), show the user what you
    found, and ask whether its QoQ is misleading or a real change in usage. Record their
    verdict in `ANOMALY_REVIEWS` in `jobs_done_post/jobs_done_common.py`, then re-run the
-   script. Never decide the verdict yourself. If it warns that the quarter is not over, stop and tell the
+   script. Never decide the verdict yourself.
+
+   **If it prints *COMPANY DIRECTORY ISSUES*, tell the user** in your hand-over: the
+   company join inflating totals (duplicate rows upstream), or a tenant with no name
+   left out of a top 3. The article's figures are unaffected, but the issue must be
+   reported, and a missing name may hide a customer from a top 3. If it warns that the quarter is not over, stop and tell the
    user: the figures would be partial. If it fails on credentials or a 403, point the
    user to the setup section of `jobs_done_post/README.md`.
 

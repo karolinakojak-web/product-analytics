@@ -190,10 +190,15 @@ Jobs Done focuses on moments when a user **gets the core value** of a feature. E
   (`data/quarterly/<platform>_companies_*.csv`).
 - **Never sum Jobs Done through the LumApps company join.** Grouping
   `fct_jobs_done__bi` by a `dim_lumapps_x_sf_organizations` field inflates the sums: in
-  Q2 2026 it doubled a large customer's Videos Jobs Done (twice its real 583,683). The join is
-  declared `many_to_one` but the table holds several rows per organization.
-  `prepare_quarterly.py` ranks on `tenant_gid` and only then looks the names up. Company
-  names come from `dim_lumapps_x_sf_organizations` only, never `dim_organizations`.
+  Q2 2026 it doubled a large customer's Videos Jobs Done, and inflated LumApps' whole
+  quarter by +78% (687.9M against 385.8M). The join is declared `many_to_one` but the
+  table holds several rows per organization (one per Salesforce platform, since
+  23 September 2026; a fix was merged on 28 September). `prepare_quarterly.py` ranks on
+  `tenant_gid` and only then looks the names up, so its figures stay right either way,
+  and it measures the problem on every fetch: the join total must equal the plain total,
+  and a tenant with no name that would have made a top 3 is reported. Both surface as
+  *COMPANY DIRECTORY ISSUES* and as warnings in the check. Company names come from
+  `dim_lumapps_x_sf_organizations` only, never `dim_organizations`.
 - **Users and MAU cannot be summed across domain groups.** They count *unique* users, so a
   user active in two domains is counted once at platform level but twice if the rows are
   added up. This is why the `all` files have no domain column: platform totals are queried
