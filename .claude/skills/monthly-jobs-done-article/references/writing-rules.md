@@ -3,14 +3,13 @@
 Every rule below applies to the monthly article. `jobs_done_post/check_article.py` enforces
 the ones that can be checked mechanically; the rest are on you.
 
-## Read the reference articles first
-- `jobs_done_post/articles/article_2026-07.md` and `jobs_done_post/articles/article_2026-06.md` — the two most recent, use these as the primary template
-- `jobs_done_post/articles/article_2026-05.md` — same structure, slightly longer feature commentary
-- `references/april-2026.md` (in this skill) — useful for voice reference
+## Read the example article first
+- [example-article.md](example-article.md) (in this skill): the August 2026 article with
+  every figure replaced by a placeholder. Use it for structure and voice only.
 
-All three follow the same markdown skeleton: the title below, a `## High level overview`
-block, then one `##` section per platform, each opening on its scope sentence (added in
-September 2026, so the reference articles lack it) and closing on its dashboard line.
+It follows the markdown skeleton: the title below, a `## High level overview` block, then
+one `##` section per platform, each opening on its scope sentence (added in September
+2026, so the example lacks it) and closing on its dashboard line.
 
 ## Title (always the same shape)
 
@@ -168,10 +167,6 @@ These are monthly articles: the feature commentary explains the month, and a YoY
 pulls the reader onto a different time scale. This came out of the review of the June
 and July 2026 issues, so it is a team convention.
 
-⚠️ `jobs_done_post/articles/article_2026-06.md` and `jobs_done_post/articles/article_2026-07.md` still carry
-feature-level YoY, since they predate the correction. Follow them for style, not on this
-point.
-
 ## Editorial note from the analyst
 
 `--note "<text>"` prints a block at the top of the report. When it is there, treat it as
@@ -197,9 +192,6 @@ python3 jobs_done_post/prepare_data.py --note "Agents was added to LumApps Jobs 
   Describing a feature's current size is fine as a statement about now rather than a
   ranking of months, but keep it inside the metric: "the largest of the features we
   track", not "Beekeeper's biggest feature".
-
-  ⚠️ The June and July 2026 articles contain "best KPI of the current year" and
-  "second-best month of the year". They predate this rule. Do not copy them on this point.
 
 ## Emojis for features
 

@@ -36,8 +36,8 @@ location, so the paths below work as written.
      permanent data limitations.
    - [references/writing-rules.md](references/writing-rules.md): every rule for the
      article (structure, scope sentence, selection, wording, YoY, emoji, closing links).
-   - The reference articles it lists, then
-     [references/april-2026.md](references/april-2026.md) for voice.
+   - [references/example-article.md](references/example-article.md): a past article
+     with its figures removed, for structure and voice.
 
 3. **Write the article** from the script output only. Do not restate an old month from
    memory or from a past article: Looker revises history.

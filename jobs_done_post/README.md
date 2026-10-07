@@ -137,7 +137,7 @@ jobs_done_post/
 ├── SKILL.md                    the steps Claude follows
 └── references/
     ├── writing-rules.md        every rule for the article
-    └── april-2026.md           voice benchmark
+    └── example-article.md      August 2026 article, figures removed
 ```
 
 `data/` is gitignored on purpose: these exports carry customer-level data. Regenerate it
