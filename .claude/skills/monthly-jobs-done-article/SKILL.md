@@ -3,7 +3,7 @@ name: monthly-jobs-done-article
 description: Write the monthly Jobs Done article covering LumApps and Beekeeper, from fresh Looker data, and check it against the data before handing it over.
 argument-hint: "[YYYY-MM] [editorial note]"
 disable-model-invocation: true
-allowed-tools: Bash(python3 jobs_done_post/prepare_data.py *), Bash(python3 jobs_done_post/check_article.py *)
+allowed-tools: Bash(python3 jobs_done_post/prepare_data.py), Bash(python3 jobs_done_post/prepare_data.py *), Bash(python3 jobs_done_post/check_article.py *)
 ---
 
 # Monthly Jobs Done article
@@ -19,10 +19,12 @@ location, so the paths below work as written.
 
 ## Steps
 
-1. **Fetch and analyse.**
+1. **Fetch and analyse, always on fresh data.** Never reuse data already on disk,
+   never pass `--no-fetch`: Looker revises history and upstream fixes land between runs.
+   The check refuses data more than 24 hours old; if it does, re-run this step.
 
    ```bash
-   python3 jobs_done_post/prepare_data.py --fetch [--month YYYY-MM] [--note "<text>"]
+   python3 jobs_done_post/prepare_data.py [--month YYYY-MM] [--note "<text>"]
    ```
 
    It pulls fresh data from Looker into `jobs_done_post/data/` and prints the analysis:
@@ -31,11 +33,22 @@ location, so the paths below work as written.
    decide what to write about. If it fails on credentials or a 403, stop and point the
    user to the setup section of `jobs_done_post/README.md`. Do not work around it.
 
+   **If it prints *DATA VOLUME ALERTS* with alerts not reviewed, stop there.** The data
+   itself may be broken: a day far off its usual volume in a LumApps cell or for
+   Beekeeper, or (monthly) a 28-day window that no longer matches its days. For each one,
+   look for a reason (a public holiday in the cell's region, a known incident upstream),
+   show the user what you found, and ask for the verdict: `expected` or `incident`.
+   Record it in `VOLUME_REVIEWS` in `jobs_done_post/jobs_done_common.py`, then re-run
+   the script. Never decide the verdict yourself. An `incident` verdict means the
+   article opens on a `*Data warning: ...*` line (see the shared writing rules).
+
 2. **Load the context.** Read these before writing a word:
    - `jobs_done_post/CLAUDE.md`: what the metrics mean, how to read them, and the
      permanent data limitations.
-   - [references/writing-rules.md](references/writing-rules.md): every rule for the
-     article (structure, scope sentence, selection, wording, YoY, emoji, closing links).
+   - `jobs_done_post/writing-rules.md`: the rules shared with the quarterly article
+     (tone, staying inside the metric, trend language, emoji, scope sentence, go-live).
+   - [references/writing-rules.md](references/writing-rules.md): the monthly rules
+     (structure, selection, YoY, the Agents paragraph, closing links).
    - [references/example-article.md](references/example-article.md): a past article
      with its figures removed, for structure and voice.
 
