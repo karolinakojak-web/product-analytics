@@ -143,6 +143,20 @@ EMOJI = {
 # includes a feature whose go-live month falls inside it.
 GO_LIVE = {"Agents": "2026-09", "Search": "2026-09"}
 
+# Tenants left out of the quarterly article, by platform, as {tenant_gid: reason}.
+# Empty: every customer is kept. The LumApps internal tenant (5769928858664960) was
+# excluded for a while, then kept on 8 October 2026 pending a decision with Karolina.
+QUARTERLY_EXCLUDED_TENANTS: dict = {}
+
+
+def without_excluded_tenants(platform, cfg, excluded):
+    """cfg with a filter that leaves out the platform's excluded tenants."""
+    ids = excluded.get(platform, {})
+    if not ids:
+        return cfg
+    return {**cfg, "filters": {**cfg["filters"],
+                               f"{cfg['prefix']}.tenant_gid": ",".join(f"-{t}" for t in ids)}}
+
 # Under this share of its domain group's Jobs Done, a feature is small: its moves are
 # large in % and tiny in volume, so a highlight quoting it must say its share.
 SMALL_SHARE = 1.0
@@ -256,6 +270,191 @@ def anomaly_caveat(platform, feature, anomaly):
     if review and review[0] == "misleading":
         return f"reviewed {anomaly['kind']} in the week of {anomaly['week']}: {review[1]}"
     return None
+
+
+# ---------------------------------------------------------------------------
+# Data volume
+# ---------------------------------------------------------------------------
+# A broken pipeline can leave every check above green: in September 2026 an
+# incremental-filter change (dataplatform PR #1503) overwrote LumApps daily Jobs
+# Done with a few hours of each day, from 20 September, and the articles' figures
+# still traced to the data. These checks look at the data itself, day by day,
+# before an article is written. They never decide: an alert waits for a person's
+# verdict in VOLUME_REVIEWS, and both article checks fail until then.
+
+# What a day is split by: LumApps runs on separate cells that break separately.
+VOLUME_UNIT_DIM = {"lumapps": "haussmann_cell", "beekeeper": None}
+VOLUME_BASELINE_WEEKS = 4      # same weekday, the 4 weeks before
+VOLUME_LOW, VOLUME_HIGH = 0.5, 2.0
+VOLUME_MIN_BASELINE = 50_000   # Jobs Done a day; a smaller unit is noise
+VOLUME_EPISODE_GAP = 3         # alert days at most this far apart form one episode
+WINDOW_GAP_DRIFT = 0.5         # points of % (see window_alerts)
+
+# Verdicts on volume alerts, keyed on (platform, unit, first day of the episode):
+#   "expected"  a real dip or peak (a public holiday): nothing to do
+#   "incident"  the data is wrong: the article opens on a "*Data warning: ...*" line
+VOLUME_REVIEWS = {
+    # public holidays
+    ("lumapps", "hm-prod-go-cell-003", "2026-04-06"): ("expected", "Easter Monday"),
+    ("lumapps", "hm-prod-go-cell-005", "2026-04-06"): ("expected", "Easter Monday"),
+    ("lumapps", "hm-prod-ms-cell-001", "2026-04-06"): ("expected", "Easter Monday"),
+    ("lumapps", "hm-prod-go-cell-003", "2026-05-01"): ("expected", "Labour Day, 1 May"),
+    ("lumapps", "hm-prod-go-cell-005", "2026-05-01"): ("expected", "Labour Day, 1 May"),
+    ("lumapps", "hm-prod-go-cell-600", "2026-05-01"): ("expected", "Labour Day, 1 May"),
+    ("lumapps", "hm-prod-ms-cell-001", "2026-05-01"): ("expected", "Labour Day, 1 May"),
+    ("lumapps", "hm-prod-go-cell-003", "2026-05-14"): ("expected", "Ascension Day"),
+    ("lumapps", "hm-prod-go-cell-002", "2026-05-25"): ("expected", "Whit Monday in Europe, Memorial Day in the US"),
+    ("lumapps", "hm-prod-go-cell-003", "2026-05-25"): ("expected", "Whit Monday in Europe, Memorial Day in the US"),
+    ("lumapps", "hm-prod-go-cell-005", "2026-05-25"): ("expected", "Whit Monday in Europe, Memorial Day in the US"),
+    ("lumapps", "hm-prod-go-cell-600", "2026-05-25"): ("expected", "Whit Monday in Europe, Memorial Day in the US"),
+    ("lumapps", "hm-prod-ms-cell-001", "2026-05-25"): ("expected", "Whit Monday in Europe, Memorial Day in the US"),
+    ("lumapps", "hm-prod-go-cell-003", "2026-07-14"): ("expected", "Bastille Day, French public holiday"),
+    ("lumapps", "hm-prod-go-cell-002", "2026-09-07"): ("expected", "Labor Day, US public holiday"),
+    ("beekeeper", "all", "2026-05-25"): ("expected", "Whit Monday in Europe, Memorial Day in the US"),
+    # fct_jobs_done_1d overwritten with partial days since dataplatform PR #1503
+    # (merged 22 September 2026); a fix is under way
+    ("lumapps", "hm-prod-ms-cell-001", "2026-09-20"): ("incident", "partial days after dataplatform PR #1503"),
+    ("lumapps", "hm-prod-ms-cell-002", "2026-09-20"): ("incident", "partial days after dataplatform PR #1503"),
+    ("lumapps", "hm-prod-go-cell-600", "2026-09-21"): ("incident", "partial days after dataplatform PR #1503"),
+    ("lumapps", "hm-prod-go-cell-001", "2026-09-26"): ("incident", "partial days after dataplatform PR #1503"),
+    ("lumapps", "hm-prod-go-cell-002", "2026-09-26"): ("incident", "partial days after dataplatform PR #1503"),
+    ("lumapps", "hm-prod-go-cell-003", "2026-09-26"): ("incident", "partial days after dataplatform PR #1503"),
+    ("lumapps", "hm-prod-go-cell-005", "2026-09-26"): ("incident", "partial days after dataplatform PR #1503"),
+}
+
+
+def fetch_daily_volume(sdk, platform, cfg, first, end):
+    """Daily Jobs Done per unit (cell, or the whole platform) from `first` to `end`
+    (dates, `end` excluded): [{"Day", "Unit", "Jobs Done"}]."""
+    p, jd = cfg["prefix"], cfg["daily_jd_field"]
+    unit = VOLUME_UNIT_DIM.get(platform)
+    dims = [f"{p}.calendar_date"] + ([f"{p}.{unit}"] if unit else [])
+    rows = run_query(sdk, cfg, dims, [jd], {
+        f"{p}.calendar_date": f"{first:%Y/%m/%d} to {end:%Y/%m/%d}",
+        f"{p}.day_selection": "any^_day"}, limit="50000")
+    return [{"Day": r[f"{p}.calendar_date"], "Unit": (r.get(f"{p}.{unit}") if unit else "all") or "none",
+             "Jobs Done": r[jd] or 0} for r in rows]
+
+
+def volume_episodes(platform, rows, period_start, period_end):
+    """Alert episodes in [period_start, period_end] (dates, both included).
+
+    Each day is compared with the median of the same weekday over the
+    VOLUME_BASELINE_WEEKS weeks before it. A day under VOLUME_LOW or over
+    VOLUME_HIGH times that baseline is an alert; alert days of one unit close
+    together form an episode, reviewed once.
+    """
+    import datetime as dt
+    from statistics import median
+
+    series = {}
+    for r in rows:
+        series.setdefault(r["Unit"], {})[dt.date.fromisoformat(r["Day"])] = num(r["Jobs Done"])
+    episodes = []
+    for unit, s in sorted(series.items()):
+        alerts, day = [], period_start
+        while day <= period_end:
+            ref = [s[day - dt.timedelta(weeks=k)] for k in range(1, VOLUME_BASELINE_WEEKS + 1)
+                   if day - dt.timedelta(weeks=k) in s]
+            if len(ref) >= VOLUME_BASELINE_WEEKS - 1:
+                base, value = median(ref), s.get(day, 0)
+                if base >= VOLUME_MIN_BASELINE and not VOLUME_LOW <= value / base <= VOLUME_HIGH:
+                    alerts.append((day, value, base))
+            day += dt.timedelta(days=1)
+        for a in alerts:
+            if episodes and episodes[-1]["unit"] == unit and (a[0] - episodes[-1]["last"]).days <= VOLUME_EPISODE_GAP:
+                episodes[-1]["days"].append(a)
+                episodes[-1]["last"] = a[0]
+            else:
+                episodes.append({"platform": platform, "unit": unit, "first": a[0], "last": a[0], "days": [a]})
+    for e in episodes:
+        e["review"] = VOLUME_REVIEWS.get((platform, e["unit"], f"{e['first']:%Y-%m-%d}"))
+    return episodes
+
+
+def window_alerts(platform, rows):
+    """The 28-day window against the sum of its 28 daily values, at month ends.
+
+    rows: [{"Day", "Window", "Daily sum"}], the report month end last. For LumApps
+    the window runs about 2% above the daily sum even in healthy months (seen in
+    July and August 2026), so the check alerts on a drift of that gap, not on
+    the gap itself: more than WINDOW_GAP_DRIFT points from the earlier month ends.
+    """
+    from statistics import median
+
+    gaps = [(r["Day"], pct(num(r["Window"]), num(r["Daily sum"]))) for r in rows]
+    gaps = [(d, g) for d, g in gaps if g is not None]
+    if len(gaps) < 2:
+        return []
+    day, gap = gaps[-1]
+    usual = median(g for _, g in gaps[:-1])
+    if abs(gap - usual) <= WINDOW_GAP_DRIFT:
+        return []
+    review = VOLUME_REVIEWS.get((platform, "28-day window", day))
+    return [{"platform": platform, "unit": "28-day window", "first": day, "gap": gap,
+             "usual": usual, "review": review}]
+
+
+def describe_volume_alert(e):
+    """One line for an episode or a window alert."""
+    if e["unit"] == "28-day window":
+        return (f"{e['platform']} 28-day window on {e['first']}: {e['gap']:+.1f}% against the sum of its "
+                f"daily values, usually {e['usual']:+.1f}%")
+    worst = max(e["days"], key=lambda d: abs(d[1] / d[2] - 1))
+    return (f"{e['platform']} {e['unit']}: {len(e['days'])} day(s) from {e['first']:%d %b} to "
+            f"{e['last']:%d %b %Y}, e.g. {worst[0]:%a %d %b}: {worst[1]:,.0f} Jobs Done against "
+            f"{worst[2]:,.0f} usually ({worst[1] / worst[2] * 100:.0f}%)")
+
+
+VOLUME_HEADERS = ["Day", "Unit", "Jobs Done"]
+
+
+def read_volume_episodes(platform, path, period_start, period_end):
+    """volume_episodes on a daily volume CSV; a missing file is itself an alert."""
+    import csv
+    from pathlib import Path
+
+    if not Path(path).exists():
+        return None
+    with open(path, newline="", encoding="utf-8") as f:
+        return volume_episodes(platform, list(csv.DictReader(f)), period_start, period_end)
+
+
+def print_volume_alerts(episodes):
+    """The DATA VOLUME ALERTS block, with the verdicts on record."""
+    if not episodes:
+        return
+    open_ = [e for e in episodes if not e["review"]]
+    print(f"\n{'!' * 80}\n⚠️  DATA VOLUME ALERTS ({len(episodes)}, {len(open_)} not reviewed)\n{'!' * 80}")
+    print("  Days far from the usual volume of the same weekday. A holiday explains some;\n"
+          "  a broken pipeline explains others. The script does not decide: investigate each\n"
+          "  new one with the analyst, then record the verdict in VOLUME_REVIEWS in\n"
+          "  jobs_done_common.py. The article check fails until then.")
+    for e in episodes:
+        state = (f"{e['review'][0]}: {e['review'][1]}" if e["review"] else "⚠️ NOT REVIEWED")
+        print(f"\n  {describe_volume_alert(e)}\n    → {state}")
+        if not e["review"]:
+            print(f'    record: ("{e["platform"]}", "{e["unit"]}", "{str(e["first"])[:10]}"): '
+                  f'("expected" or "incident", "<what the investigation found>")')
+    if open_:
+        sys.stdout.flush()
+        print(f"\n⚠️ {len(open_)} data volume alert(s) to review before writing: see above.",
+              file=sys.stderr)
+
+
+DATA_WARNING = re.compile(r"^\*Data warning: .+\*$", re.M)
+
+
+def check_volume(episodes, text, failures):
+    """No unreviewed alert; an incident must be announced at the top of the article."""
+    for e in episodes:
+        if not e["review"]:
+            key = f'("{e["platform"]}", "{e["unit"]}", "{str(e["first"])[:10]}")'
+            failures.append(f"unreviewed data volume alert: {describe_volume_alert(e)}. Investigate, then record "
+                            f"{key}: (\"expected\" or \"incident\", \"<why>\") in VOLUME_REVIEWS")
+    if any(e["review"] and e["review"][0] == "incident" for e in episodes) and not DATA_WARNING.search(text):
+        failures.append("a data incident is recorded for this period: open the article on a "
+                        "'*Data warning: ...*' line")
 
 
 # ---------------------------------------------------------------------------

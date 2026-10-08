@@ -10,6 +10,8 @@ Reads the files prepare_quarterly.py writes to data/quarterly/ for that quarter.
            feature of the scope, the right emoji and arrow, the top 3 companies in
            the script's order.
   RULES    the shared wording rules (jobs_done_common.py), and no year-over-year.
+  VOLUME   no daily volume alert left without a verdict, and a "*Data warning: ...*"
+           line when a data incident is on record for the period.
 
 Exit codes: 0 clean, 1 failures. Warnings never fail the run.
 """
@@ -20,7 +22,7 @@ import sys
 from pathlib import Path
 
 from jobs_done_common import (EMOJI, GO_LIVE, SCOPE, SCOPE_GROUP, SMALL_SHARE, YOY,
-                              FRESH_HOURS, anomaly_caveat, anomaly_review, check_numbers,
+                              FRESH_HOURS, anomaly_caveat, check_volume, anomaly_review, check_numbers,
                               check_wording, comparison_caveat, month_label, num, pct, stale,
                               weekly_anomaly)
 
@@ -348,6 +350,16 @@ def main():
     for plat in ("lumapps", "beekeeper"):
         for w in prepare_quarterly.integrity_warnings(plat, quarter):
             warnings.append(f"company directory ({plat}): {w}")
+
+    # Daily volume: a broken pipeline leaves the figures traceable but wrong.
+    check_volume(prepare_quarterly.volume_alerts(quarter), text, failures)
+    for plat in ("lumapps", "beekeeper"):
+        vol = DATA_DIR / f"{plat}_daily_volume_{quarter}.csv"
+        if vol.exists():
+            READ.add(vol)
+        else:
+            failures.append(f"no daily volume on file for {plat}: re-run python3 prepare_quarterly.py "
+                            f"--quarter {quarter}")
 
     for p, hours in stale(sorted(READ)):
         failures.append(f"data is {hours:.0f}h old ({p.name}): an article is checked on data "

@@ -39,6 +39,15 @@ Run everything from the repository root.
    verdict in `ANOMALY_REVIEWS` in `jobs_done_post/jobs_done_common.py`, then re-run the
    script. Never decide the verdict yourself.
 
+   **If it prints *DATA VOLUME ALERTS* with alerts not reviewed, stop there.** The data
+   itself may be broken: a day far off its usual volume in a LumApps cell or for
+   Beekeeper, or (monthly) a 28-day window that no longer matches its days. For each one,
+   look for a reason (a public holiday in the cell's region, a known incident upstream),
+   show the user what you found, and ask for the verdict: `expected` or `incident`.
+   Record it in `VOLUME_REVIEWS` in `jobs_done_post/jobs_done_common.py`, then re-run
+   the script. Never decide the verdict yourself. An `incident` verdict means the
+   article opens on a `*Data warning: ...*` line (see the shared writing rules).
+
    **If it prints *COMPANY DIRECTORY ISSUES*, tell the user** in your hand-over: the
    company join inflating totals (duplicate rows upstream), or a tenant with no name
    left out of a top 3. The article's figures are unaffected, but the issue must be

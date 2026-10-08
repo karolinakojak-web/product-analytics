@@ -98,3 +98,16 @@ feature is onboarded, so a short history flags backfilled features, not new ones
 real go-live date before calling anything new. Known cases: **Agents** and **Search** (AI & Search,
 LumApps) show history from 2025 or early 2026 but were only added to Jobs Done in
 **September 2026**. They must not appear in any article before then.
+
+## Data warning
+
+When `VOLUME_REVIEWS` holds an `incident` verdict for the period the article covers,
+the article opens, right under the title, on one italic line:
+
+```
+*Data warning: LumApps figures for the end of September are incomplete because of a data pipeline incident. A corrected version will follow once the data is repaired.*
+```
+
+Say which platform and which days, in plain words, and that a correction will follow.
+Do not explain the cause or quote the incident's figures. The check fails without the
+line.

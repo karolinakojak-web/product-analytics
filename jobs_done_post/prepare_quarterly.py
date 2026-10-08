@@ -15,6 +15,8 @@ Writes to data/quarterly/, one file per platform and kind:
                                         the one before, to catch steps and spikes
   <platform>_anomaly_drivers_YYYY-QN.csv  the companies behind each step or spike
   <platform>_integrity_YYYY-QN.csv   checks on the company directory (see below)
+  <platform>_daily_volume_YYYY-QN.csv  daily Jobs Done per cell (LumApps) or for the
+                                        platform (Beekeeper), to catch broken data
 
 Usage:
     python3 prepare_quarterly.py                          last complete quarter
@@ -31,9 +33,11 @@ from datetime import date, timedelta
 from statistics import median
 from pathlib import Path
 
-from jobs_done_common import (GO_LIVE, LOOKER_PLATFORMS, SMALL_SHARE, comparison_caveat,
+from jobs_done_common import (GO_LIVE, LOOKER_PLATFORMS, QUARTERLY_EXCLUDED_TENANTS,
+                              SMALL_SHARE, comparison_caveat, without_excluded_tenants,
                               STEP_WEEKS, anomaly_caveat, anomaly_review, fmt_change,
-                              looker_sdk_or_exit,
+                              VOLUME_HEADERS, fetch_daily_volume, looker_sdk_or_exit,
+                              print_volume_alerts, read_volume_episodes,
                               month_label, run_features, run_query, weekly_anomaly)
 
 DATA_DIR = Path(__file__).parent / "data" / "quarterly"
@@ -74,6 +78,11 @@ def quarter_start(q: str) -> date:
 def quarter_last_month(q: str) -> str:
     y, n = parse_quarter(q)
     return f"{y}-{3 * n:02d}"
+
+
+def volume_period(q: str) -> tuple[date, date]:
+    """The days the volume check covers: the quarter before and this one."""
+    return quarter_start(shift_quarter(q, -1)), quarter_start(shift_quarter(q, 1)) - timedelta(days=1)
 
 
 def default_quarter() -> str:
@@ -181,6 +190,8 @@ def fetch(quarter: str) -> None:
     first = shift_quarter(quarter, -(QUARTERS - 1))
 
     for platform, cfg in LOOKER_PLATFORMS.items():
+        # every query of this platform leaves the excluded tenants out
+        cfg = without_excluded_tenants(platform, cfg, QUARTERLY_EXCLUDED_TENANTS)
         p = cfg["prefix"]
         qdim, jd, users = f"{p}.calendar_quarter", cfg["daily_jd_field"], f"{p}.active_users"
         every_day = {f"{p}.calendar_date": date_range(first, quarter),
@@ -252,6 +263,13 @@ def fetch(quarter: str) -> None:
         _write(DATA_DIR / f"{platform}_feature_weeks_{quarter}.csv", WEEK_HEADERS, weeks)
         _write(DATA_DIR / f"{platform}_anomaly_drivers_{quarter}.csv", DRIVER_HEADERS,
                _anomaly_drivers(sdk, cfg, weeks))
+
+        # Daily volume over this quarter and the one before, with four weeks ahead
+        # for the baseline: a day far off its usual level may be broken data.
+        start, end = volume_period(quarter)
+        _write(DATA_DIR / f"{platform}_daily_volume_{quarter}.csv", VOLUME_HEADERS,
+               fetch_daily_volume(sdk, platform, cfg, start - timedelta(weeks=4),
+                                  end + timedelta(days=1)))
 
         print(f"  [{platform}] {len(totals)} quarters, {len(features)} feature rows, "
               f"{len(companies)} company rows", file=sys.stderr)
@@ -477,6 +495,19 @@ def print_anomalies_to_review(quarter: str) -> None:
               f"(\"misleading\" or \"real\", \"<what the investigation found>\")")
 
 
+def volume_alerts(quarter: str) -> list[dict]:
+    """Volume alert episodes of both platforms over volume_period(quarter)."""
+    episodes = []
+    for platform in LOOKER_PLATFORMS:
+        found = read_volume_episodes(platform, DATA_DIR / f"{platform}_daily_volume_{quarter}.csv",
+                                     *volume_period(quarter))
+        if found is None:
+            print(f"⚠️ [{platform}] no daily volume on file for {quarter}: re-run without --no-fetch",
+                  file=sys.stderr)
+        episodes += found or []
+    return episodes
+
+
 def print_highlights(rows: list[dict]) -> None:
     """Candidates for "Which product domains grew the most?" and "... declined?".
 
@@ -540,6 +571,7 @@ def main():
         rows += analyse(platform, quarter)
     print_highlights(rows)
     print_anomalies_to_review(quarter)
+    print_volume_alerts(volume_alerts(quarter))
     if ISSUES:
         print(f"\n{'!' * 80}\n⚠️  COMPANY DIRECTORY ISSUES ({len(ISSUES)})\n{'!' * 80}")
         for platform, w in ISSUES:

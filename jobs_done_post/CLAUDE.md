@@ -34,6 +34,7 @@ python3 check_article.py articles/article_2026-08.md
 | Scope | Each platform's scope sentence lists exactly the domain groups and features tracked in the report month (from September 2026). |
 | Wording | Em dashes, superlative rankings, recovery verbs, analyst vocabulary. |
 | Selection | At most 3 feature paragraphs per platform, correct emoji per feature, no year-over-year inside a feature paragraph. |
+| Data volume | No daily volume alert left without a verdict in `VOLUME_REVIEWS`, and a `*Data warning: ...*` line when an incident is on record (see *Data volume checks* in `README.md`). |
 | Warnings | Quantity words ("most", "half", "a third") are listed, never blocking. The script cannot judge them; a human confirms them against the figures. |
 
 **What it cannot do**
@@ -219,6 +220,17 @@ Jobs Done focuses on moments when a user **gets the core value** of a feature. E
   about 530K to about 930K a week at that point, while result clicks stayed flat. Any
   comparison across that date (August 2026 MoM, Q3 2026 QoQ) mostly measures the new
   event, not more searching: say so rather than reading it as growth.
+- **Daily data can break without any check failing.** From 20 September 2026,
+  `fct_jobs_done_1d` held partial days in every LumApps cell (dataplatform PR #1503
+  dropped the day truncation from its incremental filter; a fix is under way). Both
+  scripts now check daily volume per cell and print *DATA VOLUME ALERTS*; the article
+  checks fail until each has a verdict in `VOLUME_REVIEWS` (see *Data volume checks* in
+  `README.md`). An `incident` verdict means the article opens on a `*Data warning: ...*`
+  line.
+- **The LumApps 28-day window is about 2% above the sum of its days** (+2.1% at
+  31 August 2026, +2.3% at 31 July), while Beekeeper's matches exactly. The cause is not
+  known yet. Monthly figures read the window, so they carry this gap; the volume check
+  only alerts when it moves.
 - **MAU** comes from the `_all_` files. If those files are missing, note MAU is unavailable.
 
 ---

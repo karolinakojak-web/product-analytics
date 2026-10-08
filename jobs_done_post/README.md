@@ -153,6 +153,38 @@ Warnings are not failures. Quantity words like "most" or "half" are listed for y
 confirm, because the script cannot judge them. That is deliberate: the August 2026 draft
 claimed a month made up "most" of the previous drop when it was about a third.
 
+## Data volume checks
+
+Every check above can pass on broken data. In September 2026 a dbt change
+(dataplatform PR #1503) overwrote LumApps daily Jobs Done with partial days, from
+20 September in some cells: the article's figures traced to the data, and the data was
+wrong. So both scripts also check the data itself, and both article checks fail until
+a person has looked at what they find.
+
+| Check | What raises an alert |
+|---|---|
+| Daily volume | A day under half, or over twice, the median of the same weekday over the 4 weeks before. Read per LumApps cell (`haussmann_cell`), since cells break separately, and for Beekeeper as a whole. Units under 50,000 Jobs Done a day are not checked. |
+| 28-day window (monthly) | The month's 28-day Jobs Done against the sum of its 28 daily values. For LumApps the window runs about 2% above the sum even in healthy months, so the check alerts when that gap moves more than 0.5 point from the two month ends before. |
+
+The days checked are the ones the article compares: the report month's window and the
+one before (monthly), the report quarter and the one before (quarterly). Alert days of
+one unit close together form one episode, so an incident is reviewed once.
+
+**The scripts do not decide.** Both print *DATA VOLUME ALERTS*, with the verdicts on
+record. For each new one, investigate (a public holiday in the cell's region, an
+incident upstream), then record the verdict in `VOLUME_REVIEWS` in
+`jobs_done_common.py`:
+
+- `"expected"`: a real dip or peak, such as a public holiday. Nothing else to do.
+- `"incident"`: the data is wrong. Report it upstream, and open the article on a line
+  `*Data warning: <what is affected, and that a corrected version will follow>.*`.
+  The check fails without it.
+
+A verdict stays on record, so a holiday reviewed for one article is not asked again for
+the next one that covers it. The daily data is in
+`data/<platform>_daily_volume_YYYY-MM.csv` and
+`data/quarterly/<platform>_daily_volume_YYYY-QN.csv`.
+
 ## Layout
 
 ```
@@ -160,7 +192,7 @@ jobs_done_post/
 ├── README.md           this file
 ├── CLAUDE.md           data sources, metric definitions, data limitations
 ├── writing-rules.md            writing rules shared by both articles
-├── jobs_done_common.py         Looker config, emoji, go-live, shared checks
+├── jobs_done_common.py         Looker config, emoji, go-live, reviews, shared checks
 ├── prepare_data.py             monthly: Looker fetch + analysis
 ├── check_article.py            monthly: article verification
 ├── prepare_quarterly.py        quarterly: Looker fetch + analysis
@@ -172,8 +204,9 @@ jobs_done_post/
     ├── <platform>_all_YYYY-MM.csv        platform totals
     ├── <platform>_features_YYYY-MM.csv   domain group x feature
     ├── lumapps_agents_YYYY-MM.csv        LumApps Agents, per agent
+    ├── <platform>_daily_volume_YYYY-MM.csv  daily Jobs Done per cell, for the volume checks
     ├── raw/            per-tab responses, kept as an audit trail
-    └── quarterly/      <platform>_{totals,features,companies}_YYYY-QN.csv
+    └── quarterly/      <platform>_{totals,features,companies,daily_volume,...}_YYYY-QN.csv
 
 .claude/skills/monthly-jobs-done-article/
 ├── SKILL.md                    the steps Claude follows

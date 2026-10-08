@@ -6,6 +6,8 @@ Reads four CSV files from the data/ subfolder:
   - beekeeper_all_YYYY-MM.csv         platform totals + MAU (Beekeeper)
   - lumapps_features_YYYY-MM.csv      feature-level breakdown (Lumapps)
   - beekeeper_features_YYYY-MM.csv    feature-level breakdown (Beekeeper)
+and checks the data itself on <platform>_daily_volume_YYYY-MM.csv (daily Jobs Done per
+LumApps cell, or for Beekeeper), see "Data volume" in jobs_done_common.py.
 
 Outputs structured analytics to stdout.
 
@@ -21,12 +23,13 @@ import csv
 import glob
 import re
 import sys
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from statistics import mean, stdev
 
-from jobs_done_common import (LOOKER_PLATFORMS, fmt_change, looker_sdk_or_exit, run_features,
-                              run_query)
+from jobs_done_common import (LOOKER_PLATFORMS, VOLUME_HEADERS, fetch_daily_volume, fmt_change,
+                              looker_sdk_or_exit, print_volume_alerts, read_volume_episodes,
+                              run_features, run_query, window_alerts)
 
 DATA_DIR = Path(__file__).parent / "data"
 
@@ -633,6 +636,14 @@ def fetch_from_looker(report_month: str = "") -> str:
 
         print(f"  [{platform}] merged -> {all_path.name}, {feat_path.name}", file=sys.stderr)
 
+        # Daily volume from the oldest window the checks compare (see volume_alerts),
+        # with four weeks ahead for the baseline.
+        vol_path = DATA_DIR / f"{platform}_daily_volume_{stamp}.csv"
+        _merge_csv(vol_path, VOLUME_HEADERS, fetch_daily_volume(
+            sdk, platform, cfg, window_start(adj_month(stamp, -WINDOW_MONTHS)) - timedelta(weeks=4),
+            month_end(stamp) + timedelta(days=1)))
+        written.append(vol_path)
+
         if cfg.get("per_agent_domain"):
             written.append(_fetch_agents(sdk, cfg, DATA_DIR / f"{platform}_agents_{stamp}.csv"))
 
@@ -653,6 +664,56 @@ def _fetch_agents(sdk, cfg: dict, path: Path) -> Path:
                [dict(zip(AGENT_HEADERS, (r.get(f) for f in dims + measures))) for r in rows])
     print(f"  per-agent detail: {len(rows)} rows -> {path.name}", file=sys.stderr)
     return path
+
+
+# ---------------------------------------------------------------------------
+# Data volume
+# ---------------------------------------------------------------------------
+
+WINDOW_MONTHS = 2   # month ends before the report month, for the window check
+
+
+def month_end(ym: str) -> date:
+    y, m = int(ym[:4]), int(ym[5:7])
+    return date(y + m // 12, m % 12 + 1, 1) - timedelta(days=1)
+
+
+def window_start(ym: str) -> date:
+    """First day of the 28-day window that ends with the month."""
+    return month_end(ym) - timedelta(days=27)
+
+
+def volume_alerts(report_month: str) -> list[dict]:
+    """Volume alerts of both platforms for the report month.
+
+    Every day of the two windows the article compares (the previous month's and
+    this one's), and the 28-day window against the sum of its days at the month
+    ends: in the report month, and in WINDOW_MONTHS months before for the usual gap.
+    """
+    episodes = []
+    for platform in LOOKER_PLATFORMS:
+        vol = DATA_DIR / f"{platform}_daily_volume_{report_month}.csv"
+        found = read_volume_episodes(platform, vol, window_start(adj_month(report_month, -1)),
+                                     month_end(report_month))
+        if found is None:
+            print(f"⚠️ [{platform}] no daily volume on file for {report_month}: re-run without "
+                  f"--no-fetch", file=sys.stderr)
+            continue
+        episodes += found
+        with open(vol, newline="", encoding="utf-8") as f:
+            daily = {}
+            for r in csv.DictReader(f):
+                daily[r["Day"]] = daily.get(r["Day"], 0) + float(r["Jobs Done"] or 0)
+        with open(DATA_DIR / f"{platform}_all_{report_month}.csv", newline="", encoding="utf-8") as f:
+            window = {r["Calendar Month"][:7]: r["Jobs Done"] for r in csv.DictReader(f)}
+        rows = []
+        for ym in (adj_month(report_month, -k) for k in range(WINDOW_MONTHS, -1, -1)):
+            days = [f"{window_start(ym) + timedelta(days=i):%Y-%m-%d}" for i in range(28)]
+            if ym in window and all(d in daily for d in days):
+                rows.append({"Day": f"{month_end(ym):%Y-%m-%d}", "Window": window[ym],
+                             "Daily sum": sum(daily[d] for d in days)})
+        episodes += window_alerts(platform, rows)
+    return episodes
 
 
 def _merge_csv(path: Path, headers: list[str], rows: list[dict]) -> None:
@@ -761,6 +822,8 @@ def main():
     print_feature_section("Beekeeper", beek_features, report_month)
     print_movers(beek_features, beek_jd)
     print_yearly_trends("Beekeeper", beek_features)
+
+    print_volume_alerts(volume_alerts(report_month))
 
 
 if __name__ == "__main__":

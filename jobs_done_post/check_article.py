@@ -14,6 +14,10 @@ Two families of checks:
            .claude/skills/monthly-jobs-done-article/references/writing-rules.md. Deterministic, so
            they never depend on anyone remembering them.
 
+  VOLUME   no daily volume alert left without a verdict, and a "*Data warning: ...*"
+           line when a data incident is on record for the period (prepare_data.py
+           and the "Data volume" section of jobs_done_common.py).
+
 Exit codes: 0 clean, 1 failures, 2 the article or its data could not be read.
 Warnings never fail the run; they ask a human to confirm a judgement the script
 cannot make on its own.
@@ -25,7 +29,7 @@ import sys
 from pathlib import Path
 
 from jobs_done_common import (EMOJI, FRESH_HOURS, GO_LIVE, SCOPE, SCOPE_GROUP, YOY,
-                              check_numbers, check_wording, num, pct, stale)
+                              check_numbers, check_volume, check_wording, num, pct, stale)
 
 HERE = Path(__file__).resolve().parent
 DATA_DIR = HERE / "data"
@@ -254,6 +258,18 @@ def main():
                 vals = (vals or []) + agent_values(la_agents, month)
             check_numbers(p, allowed + (vals or []), f"{plat}/{fm.group(1) if fm else 'intro'}",
                           failures)
+
+    # ---- data volume -----------------------------------------------------
+    # A broken pipeline leaves the figures traceable but wrong.
+    import prepare_data
+    check_volume(prepare_data.volume_alerts(month), text, failures)
+    for plat in ("lumapps", "beekeeper"):
+        vol = DATA_DIR / f"{plat}_daily_volume_{month}.csv"
+        if vol.exists():
+            READ.append(vol)
+        else:
+            failures.append(f"no daily volume on file for {plat}: re-run python3 prepare_data.py "
+                            f"--month {month}")
 
     # ---- freshness -------------------------------------------------------
     for p, hours in stale(READ):
