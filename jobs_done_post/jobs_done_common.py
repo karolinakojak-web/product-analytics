@@ -256,6 +256,10 @@ ANOMALY_REVIEWS = {
     ("lumapps", "Search", "2026-08-10"): (
         "misleading", "suggestion clicks counted from 6 August 2026, spread over many "
                       "companies (see TRACKING_CHANGES)"),
+    # the same step, detected a week later once the September data was repaired
+    ("lumapps", "Search", "2026-08-17"): (
+        "misleading", "suggestion clicks counted from 6 August 2026, spread over many "
+                      "companies (see TRACKING_CHANGES)"),
 }
 
 
@@ -311,10 +315,16 @@ VOLUME_REVIEWS = {
     ("lumapps", "hm-prod-go-cell-003", "2026-07-14"): ("expected", "Bastille Day, French public holiday"),
     ("lumapps", "hm-prod-go-cell-002", "2026-09-07"): ("expected", "Labor Day, US public holiday"),
     ("beekeeper", "all", "2026-05-25"): ("expected", "Whit Monday in Europe, Memorial Day in the US"),
+    # hm-prod-ms-cell-002 follows the Japanese public holidays
+    ("lumapps", "hm-prod-ms-cell-002", "2026-04-29"): ("expected", "Showa Day, Japanese public holiday"),
+    ("lumapps", "hm-prod-ms-cell-002", "2026-05-03"): ("expected", "Golden Week, Japanese public holidays"),
+    ("lumapps", "hm-prod-ms-cell-002", "2026-07-19"): ("expected", "Marine Day weekend, Japanese public holiday"),
+    ("lumapps", "hm-prod-ms-cell-002", "2026-08-10"): ("expected", "Mountain Day, Japanese public holiday"),
+    ("lumapps", "hm-prod-ms-cell-002", "2026-09-20"): ("expected", "Silver Week, Japanese public holidays"),
     # fct_jobs_done_1d overwritten with partial days since dataplatform PR #1503
-    # (merged 22 September 2026); a fix is under way
+    # (merged 22 September 2026). Repaired upstream: the fetch of 19 October 2026 no
+    # longer shows these days. Kept for the record.
     ("lumapps", "hm-prod-ms-cell-001", "2026-09-20"): ("incident", "partial days after dataplatform PR #1503"),
-    ("lumapps", "hm-prod-ms-cell-002", "2026-09-20"): ("incident", "partial days after dataplatform PR #1503"),
     ("lumapps", "hm-prod-go-cell-600", "2026-09-21"): ("incident", "partial days after dataplatform PR #1503"),
     ("lumapps", "hm-prod-go-cell-001", "2026-09-26"): ("incident", "partial days after dataplatform PR #1503"),
     ("lumapps", "hm-prod-go-cell-002", "2026-09-26"): ("incident", "partial days after dataplatform PR #1503"),

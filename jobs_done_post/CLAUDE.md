@@ -224,7 +224,8 @@ Jobs Done focuses on moments when a user **gets the core value** of a feature. E
   event, not more searching: say so rather than reading it as growth.
 - **Daily data can break without any check failing.** From 20 September 2026,
   `fct_jobs_done_1d` held partial days in every LumApps cell (dataplatform PR #1503
-  dropped the day truncation from its incremental filter; a fix is under way). Both
+  dropped the day truncation from its incremental filter). It was repaired upstream:
+  the fetch of 19 October 2026 shows full days again. Both
   scripts now check daily volume per cell and print *DATA VOLUME ALERTS*; the article
   checks fail until each has a verdict in `VOLUME_REVIEWS` (see *Data volume checks* in
   `README.md`). An `incident` verdict means the article opens on a `*Data warning: ...*`
