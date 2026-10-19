@@ -8,8 +8,8 @@ quarterly one.
 | Skill | `/monthly-jobs-done-article` | `/quarterly-jobs-done-article` |
 | Data and analysis | `prepare_data.py` | `prepare_quarterly.py` |
 | Check | `check_article.py` | `check_quarterly_article.py` |
-| Article | `articles/article_YYYY-MM.md` | `articles/quarterly_YYYY-QN.md` |
-| Shape | 2 to 3 features per platform | every feature, with its top 3 companies |
+| Article | `articles/article_YYYY-MM.md` | `articles/quarterly_YYYY-QN.md`, rendered as `.html` by `render_quarterly_html.py` |
+| Shape | 2 to 3 features per platform | one block per domain group: every feature, and the group's top 3 companies |
 
 Both read the same Looker explores and share their writing rules
 (`writing-rules.md`) and their constants (`jobs_done_common.py`).
@@ -122,14 +122,20 @@ folder:
 ```bash
 python3 prepare_quarterly.py --quarter 2026-Q3
 python3 check_quarterly_article.py articles/quarterly_2026-Q3.md
+python3 render_quarterly_html.py articles/quarterly_2026-Q3.md
 ```
+
+The last command writes `articles/quarterly_2026-Q3.html`: one `<style>` and one `<div>`,
+to paste as embedded content in the intranet page. It lays out the checked Markdown and
+adds no figure of its own, so always fix the Markdown, never the HTML. The save hook runs
+it after a passing check.
 
 A quarter is measured over every day it contains: Jobs Done summed day by day, Users
 Completing Jobs unique over the whole quarter. There is no MAU in the quarterly article. The script fetches the
 report quarter and the four before it, and warns when the quarter is not over yet.
 Wait a day or two after the quarter ends so its last day has landed in Looker.
 
-The article names customers in each feature's top 3. It is meant for internal readers.
+The article names customers in each domain group's top 3. It is meant for internal readers.
 
 ## Checking the article
 
@@ -197,16 +203,17 @@ jobs_done_post/
 ├── check_article.py            monthly: article verification
 ├── prepare_quarterly.py        quarterly: Looker fetch + analysis
 ├── check_quarterly_article.py  quarterly: article verification
+├── render_quarterly_html.py    quarterly: the checked article as an HTML block
 ├── requirements.txt
 ├── .env.example
-├── articles/           article_YYYY-MM.md and quarterly_YYYY-QN.md
+├── articles/           article_YYYY-MM.md, quarterly_YYYY-QN.md and .html
 └── data/               gitignored, regenerated on every run
     ├── <platform>_all_YYYY-MM.csv        platform totals
     ├── <platform>_features_YYYY-MM.csv   domain group x feature
     ├── lumapps_agents_YYYY-MM.csv        LumApps Agents, per agent
     ├── <platform>_daily_volume_YYYY-MM.csv  daily Jobs Done per cell, for the volume checks
     ├── raw/            per-tab responses, kept as an audit trail
-    └── quarterly/      <platform>_{totals,features,companies,daily_volume,...}_YYYY-QN.csv
+    └── quarterly/      <platform>_{totals,features,companies,group_companies,daily_volume,...}_YYYY-QN.csv
 
 .claude/skills/monthly-jobs-done-article/
 ├── SKILL.md                    the steps Claude follows
@@ -217,7 +224,7 @@ jobs_done_post/
 .claude/skills/quarterly-jobs-done-article/
 ├── SKILL.md
 └── references/
-    └── writing-rules.md        the quarterly structure and feature block
+    └── writing-rules.md        the quarterly structure and domain block
 ```
 
 `data/` and `articles/` are gitignored on purpose: the exports carry customer-level data,

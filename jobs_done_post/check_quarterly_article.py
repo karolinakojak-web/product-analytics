@@ -6,9 +6,9 @@
 Reads the files prepare_quarterly.py writes to data/quarterly/ for that quarter.
 
   NUMBERS  every M/K/% figure must trace back to the data, with its sign.
-  SHAPE    fixed lines, one ### section per domain group of the scope, one block per
-           feature of the scope, the right emoji and arrow, the top 3 companies in
-           the script's order.
+  SHAPE    fixed lines, one ### block per domain group of the scope with its Jobs Done
+           line, one line per feature of the group (largest first, right emoji), the
+           group's top 3 companies in the script's order and one 💡 line.
   RULES    the shared wording rules (jobs_done_common.py), and no year-over-year.
   VOLUME   no daily volume alert left without a verdict, and a "*Data warning: ...*"
            line when a data incident is on record for the period.
@@ -31,11 +31,12 @@ DATA_DIR = Path(__file__).resolve().parent / "data" / "quarterly"
 GREW = "### Which product domains grew the most?"
 DECLINED = "### Which product domains declined?"
 HIGHLIGHT = re.compile(r"^- (\S+)\s+\*\*([^*]+)\*\*\s+\((LumApps|Beekeeper)\)\s+([+-]\d+(?:\.\d+)?)% QoQ", re.M)
-ARROWS = {"⬆️": "up", "⬇️": "down", "➡️": "flat"}
-HEADING = re.compile(r"^(⬆️|⬇️|➡️)\s*(\S+)\s+\*\*([^*]+)\*\*", re.M)
 GROUP = re.compile(r"^### (.+?)\s*$", re.M)
+GROUP_LINE = re.compile(r"^- Jobs Done: \S+ \((?:[+-][\d.]+%|flat) QoQ\), [\d.]+% of (LumApps|Beekeeper) Jobs Done$", re.M)
+FEATURES_LABEL = "Features by Jobs Done:"
+FEATURE_LINE = re.compile(r"^- (\S+)\s+\*\*([^*]+)\*\*: \S+ \(([^)]*)\), [\d.]+% of the domain$", re.M)
+COMPANIES_LABEL = "Top 3 companies by Jobs Done:"
 FIXED = [
-    ("*Don't you know what \"Jobs Done\" metrics are?", "italicised intro link"),
     ("*Full breakdown available in the [LumApps Jobs Done dashboard]", "italicised LumApps dashboard link"),
     ("*Full breakdown available in the [Beekeeper Jobs Done dashboard]", "italicised Beekeeper dashboard link"),
     ("## High level overview", "overview heading"),
@@ -77,7 +78,10 @@ def load(platform, quarter):
     companies = {}
     for r in read(platform, "companies", quarter):
         companies.setdefault(r["Feature"], []).append(r)
-    return totals, feats, companies
+    group_companies = {}
+    for r in read(platform, "group_companies", quarter):
+        group_companies.setdefault(r["Product Domain Group"], []).append(r)
+    return totals, feats, companies, group_companies
 
 
 def scope(feats, quarter):
@@ -146,6 +150,14 @@ def feature_values(feats, companies, name, group_jd, platform_jd, quarter):
     return out
 
 
+def group_company_values(rows, group_jd):
+    out = []
+    for c in rows:
+        cj = num(c["Jobs Done"])
+        out += scaled(cj) + share(cj / group_jd * 100)
+    return out
+
+
 def check_highlights(text, data, quarter, failures):
     """The two highlight sections: 2 or 3 points each, both platforms, like for like."""
     prev = shift(quarter, -1)
@@ -165,7 +177,7 @@ def check_highlights(text, data, quarter, failures):
             failures.append(f"{label}: {len(points)} points, write 2 or 3")
         seen, candidates = set(), set()
         for plat in plat_of.values():
-            totals, feats, _ = data[plat]
+            totals, feats = data[plat][:2]
             for g, names in scope(feats, quarter).items():
                 for n in names:
                     p = feats[n].get(prev)
@@ -180,7 +192,7 @@ def check_highlights(text, data, quarter, failures):
                 continue
             emoji, name, platform, written = m.group(1), m.group(2).strip(), m.group(3), float(m.group(4))
             plat = plat_of[platform]
-            totals, feats, companies = data[plat]
+            totals, feats, companies = data[plat][:3]
             groups = scope(feats, quarter)
             group = next((g for g, ns in groups.items() if name in ns), None)
             if not group:
@@ -207,7 +219,7 @@ def check_highlights(text, data, quarter, failures):
 
 
 def check_platform(plat, sec, data, quarter, failures):
-    totals, feats, companies = data
+    totals, feats, companies, group_companies = data
     platform_jd = num(totals[quarter]["Jobs Done"])
     want = scope(feats, quarter)
     weekly = anomalies(plat, quarter)
@@ -243,53 +255,70 @@ def check_platform(plat, sec, data, quarter, failures):
         body = sec[h.end():heads[i + 1].start() if i + 1 < len(heads) else len(sec)]
         body = body.split("*Full breakdown available")[0]
         names = want.get(g, [])
+        if not names:
+            continue
+        label = f"{plat}/{g}"
         group_jd = sum(num(feats[n][quarter]["Jobs Done"]) for n in names) or 1
-        blocks = list(HEADING.finditer(body))
-        check_numbers(body[:blocks[0].start()] if blocks else body, allowed, f"{plat}/{g}", failures)
+        values = (allowed + group_company_values(group_companies.get(g, []), group_jd)
+                  + [v for n in names for v in feature_values(feats, companies, n, group_jd,
+                                                              platform_jd, quarter)])
 
-        written = [b.group(3).strip() for b in blocks]
+        if not GROUP_LINE.search(body):
+            failures.append(f"{label}: open the block on '- Jobs Done: <JD> (<QoQ> QoQ), "
+                            f"<share>% of <Platform> Jobs Done'")
+
+        # every feature of the group, largest first, with its emoji
+        if FEATURES_LABEL not in body:
+            failures.append(f"{label}: missing the '{FEATURES_LABEL}' list")
+        listing = re.split(rf"^{re.escape(COMPANIES_LABEL)}|^💡", body.partition(FEATURES_LABEL)[2],
+                           maxsplit=1, flags=re.M)[0]
+        for raw in listing.splitlines():
+            if raw.startswith("- ") and not FEATURE_LINE.match(raw):
+                failures.append(f"{label}: write '- <emoji> **Feature**: <JD> (<QoQ> QoQ), "
+                                f"<share>% of the domain', got {raw[:60]!r}")
+        lines = list(FEATURE_LINE.finditer(listing))
+        written = [m.group(2).strip() for m in lines]
         for n in names:
             if n not in written:
-                failures.append(f"{plat}/{g}: no block for {n}")
-        for j, b in enumerate(blocks):
-            arrow, emoji, name = b.group(1), b.group(2), b.group(3).strip()
-            text = body[b.start():blocks[j + 1].start() if j + 1 < len(blocks) else len(body)]
-            label = f"{plat}/{name}"
+                failures.append(f"{label}: no line for {n} in '{FEATURES_LABEL}'")
+        for m in lines:
+            emoji, name = m.group(1), m.group(2).strip()
             if name not in names:
-                failures.append(f"{label}: not a live feature of {g} in {quarter}")
-                continue
-            if EMOJI.get(name) and emoji != EMOJI[name]:
-                failures.append(f"{label}: should use {EMOJI[name]}, not {emoji}")
-            prev = feats[name].get(shift(quarter, -1))
-            qoq = pct(num(feats[name][quarter]["Jobs Done"]), num(prev["Jobs Done"])) if prev else None
-            if qoq is not None:
-                direction = "flat" if round(qoq, 1) == 0 else ("up" if qoq > 0 else "down")
-                if ARROWS[arrow] != direction:
-                    failures.append(f"{label}: arrow {arrow} but Jobs Done moved {qoq:+.1f}% QoQ")
-            for hit in re.finditer(YOY, text, re.I):
-                failures.append(f"{label}: year-over-year in a feature block: {hit.group(0)!r}")
-            odd = weekly.get(name)
-            if odd and anomaly_caveat(plat, name, odd) and month_label(odd["week"]) not in text:
-                failures.append(f"{label}: reviewed as misleading ({odd['kind']} in the week of "
-                                f"{odd['week']}); its 💡 line must explain it and name "
+                failures.append(f"{label}: {name} is not a live feature of {g} in {quarter}")
+            elif EMOJI.get(name) and emoji != EMOJI[name]:
+                failures.append(f"{label}: {name} should use {EMOJI[name]}, not {emoji}")
+        listed = [n for n in written if n in names]
+        if listed != [n for n in names if n in listed]:
+            failures.append(f"{label}: list the features from largest to smallest Jobs Done: "
+                            f"{', '.join(names)}")
+
+        # the group's top 3 companies, as the script ranks them
+        top = [f"{c['Company']} ({c['Slug']})" if c["Slug"] else c["Company"]
+               for c in group_companies.get(g, [])[:3]]
+        if top and COMPANIES_LABEL not in body:
+            failures.append(f"{label}: missing the '{COMPANIES_LABEL}' list")
+        positions = []
+        for c in top:
+            hit = re.search(rf"^\s*\d\.\s+{re.escape(c)}, ", body, re.M)
+            positions.append(hit.start() if hit else -1)
+        if top and -1 in positions:
+            missing = [c for c, p in zip(top, positions) if p == -1]
+            failures.append(f"{label}: top 3 companies should list {', '.join(missing)}")
+        elif positions != sorted(positions):
+            failures.append(f"{label}: top 3 companies are not in the script's order")
+
+        insights = [l for l in body.splitlines() if l.startswith("💡")]
+        if len(insights) != 1:
+            failures.append(f"{label}: write one 💡 line, found {len(insights)}")
+        for hit in re.finditer(YOY, body, re.I):
+            failures.append(f"{label}: year-over-year in a domain block: {hit.group(0)!r}")
+        for n in names:
+            odd = weekly.get(n)
+            if odd and anomaly_caveat(plat, n, odd) and month_label(odd["week"]) not in body:
+                failures.append(f"{label}: {n} was reviewed as misleading ({odd['kind']} in the "
+                                f"week of {odd['week']}); the 💡 line must explain it and name "
                                 f"{month_label(odd['week'])}")
-            # name and slug together: two tenants can share a name ("Beekeeper")
-            top = [f"{c['Company']} ({c['Slug']})" if c["Slug"] else c["Company"]
-                   for c in companies.get(name, [])[:3]]
-            positions = []
-            for c in top:
-                hit = re.search(rf"^\s*\d\.\s+{re.escape(c)}", text, re.M)
-                positions.append(hit.start() if hit else -1)
-            if top and -1 in positions:
-                missing = [c for c, p in zip(top, positions) if p == -1]
-                failures.append(f"{label}: top 3 companies should list {', '.join(missing)}")
-            elif positions != sorted(positions):
-                failures.append(f"{label}: top 3 companies are not in the script's order")
-            if (not num(feats[name][quarter]["Jobs Done Users"])
-                    and "- Users Completing Jobs: not tracked" not in text):
-                failures.append(f"{label}: users are not tracked, write 'Users Completing Jobs: not tracked'")
-            check_numbers(text, allowed + feature_values(feats, companies, name, group_jd,
-                                                         platform_jd, quarter), label, failures)
+        check_numbers(body, values, label, failures)
 
 
 def main():
@@ -310,7 +339,9 @@ def main():
         failures.append(f"title must read '# Jobs Done - {q_label} Product Performance'")
     opening = (f"Hi Team, here is how our key product usage KPI, Jobs Done, performed in "
                f"{q_label} across two platforms. Every change compares with {prev_label}.")
-    for needle, what in [(opening, "standard opening")] + FIXED:
+    definition = (f"*QoQ (quarter over quarter): the change compared with the previous quarter, "
+                  f"here {q_label} against {prev_label}.*")
+    for needle, what in [(opening, "standard opening"), (definition, "QoQ definition line")] + FIXED:
         if needle not in text:
             failures.append(f"missing {what}")
     # No MAU in the quarterly: "active users" would read as the whole active base.

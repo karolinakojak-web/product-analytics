@@ -16,7 +16,8 @@ measures the whole quarter:
 | Users Completing Jobs | unique users who completed that job at least once in the quarter |
 
 There is no MAU in the quarterly article: the users figure is Users Completing Jobs over
-the quarter, at platform level in the overview and per feature in the blocks. Call it
+the quarter, at platform level in the overview. The domain blocks show no users figure;
+a 💡 line may quote a feature's users from the script output. Call it
 "Users Completing Jobs", never "active users", which reads as the whole active base.
 Users do not add up across features or domain groups: only Jobs Done does.
 
@@ -24,12 +25,16 @@ Every change compares the quarter with the one before (QoQ). No year-over-year f
 
 ## Structure
 
+The article is written in Markdown, then laid out as an HTML block for the intranet by
+`jobs_done_post/render_quarterly_html.py` (the save hook runs it once the check passes).
+The renderer reads the lines below exactly as they are: keep their shape.
+
 ````
 # Jobs Done - Q2 2026 Product Performance
 
 Hi Team, here is how our key product usage KPI, Jobs Done, performed in Q2 2026 across two platforms. Every change compares with Q1 2026.
 
-*Don't you know what "Jobs Done" metrics are? [Read this introduction](https://we.lumapps.com/we/ls/space/5070108616032256/team-engineering/article/ddf2b3ba-e590-4806-ac0a-00669376237c)*
+*QoQ (quarter over quarter): the change compared with the previous quarter, here Q2 2026 against Q1 2026.*
 
 ---
 
@@ -46,7 +51,6 @@ Hi Team, here is how our key product usage KPI, Jobs Done, performed in Q2 2026 
 ### Which product domains grew the most?
 
 - 👍 **Reactions** (Beekeeper) +13.4% QoQ: a third quarter up in a row, with more people reacting.
-- 🗂️ **Forms** (Beekeeper) +10.5% QoQ: up in each of the last four quarters.
 - 📄 **Content** (LumApps) +8.2% QoQ: 95.0% of Communication & Collaboration Jobs Done.
 
 ### Which product domains declined?
@@ -54,31 +58,31 @@ Hi Team, here is how our key product usage KPI, Jobs Done, performed in Q2 2026 
 - ⚙️ **Workflows** (Beekeeper) -13.5% QoQ: the largest drop of Work & Automation.
 - 📝 **Posts** (LumApps) -13.4% QoQ: fewer people posted, and less often.
 
-Continue reading for a detailed breakdown of each product domain.
-
 ---
 
 ## LumApps
 
 Jobs Done covers Communication & Collaboration (Content, Spaces, Posts, Reactions, Videos, Comments).
 
-<one to three sentences on the platform's quarter>
+<one or two sentences on the platform's quarter>
 
 ### Communication & Collaboration
 
-<one sentence: the group's Jobs Done and QoQ>
+- Jobs Done: 369.5M (+7.9% QoQ), 95.8% of LumApps Jobs Done
 
-⬆️ 📄 **Content** (95.0% of Communication & Collaboration Jobs Done)
-- Jobs Done: 359.6M (+8.2% QoQ)
-- Users Completing Jobs: 3.46M (+5.5% QoQ)
-- Top 3 companies by Jobs Done:
-  1. Company A (company-a), 21.6M (6.0% of Content Jobs Done)
-  2. Company B (company-b), 17.0M (4.7% of Content Jobs Done)
-  3. Company C (company-c), 15.5M (4.3% of Content Jobs Done)
+Features by Jobs Done:
+- 📄 **Content**: 359.6M (+8.2% QoQ), 95.0% of the domain
+- 🏠 **Spaces**: 10.6M (-2.1% QoQ), 2.8% of the domain
+- 🗨️ **Comments**: 203.6K (-4.0% QoQ), 0.05% of the domain
+
+Top 3 companies by Jobs Done:
+1. Company A (company-a), 40.1M (10.8% of Communication & Collaboration Jobs Done)
+2. Company B (company-b), 21.3M (5.8% of Communication & Collaboration Jobs Done)
+3. Company C (company-c), 17.9M (4.8% of Communication & Collaboration Jobs Done)
 
 💡 <one or two sentences>
 
-<next feature, next group...>
+<next domain group...>
 
 *Full breakdown available in the [LumApps Jobs Done dashboard](...).*
 
@@ -91,15 +95,16 @@ Jobs Done covers Communication & Collaboration (Content, Spaces, Posts, Reaction
 
 - **Two highlight sections follow the overview**: *Which product domains grew the most?*
   and *Which product domains declined?* See *The highlights* below.
-- **Title, opening, intro link and the two dashboard lines are fixed.**
+- **Title, opening, QoQ definition line and the two dashboard lines are fixed.**
   Copy them, changing only the quarters. The dashboard lines are the monthly ones,
   character for character (see the monthly rules, *Close each company section*).
-- **One `###` section per product domain group** in the scope sentence, ordered from
+- **A `*Data warning: ...*` line**, when the shared rules require one, goes right under
+  the title. The HTML shows it in italics under the title, never as a banner.
+- **One `###` block per product domain group** in the scope sentence, ordered from
   largest to smallest by Jobs Done, as the script prints them.
-- **Every feature of the scope gets its own block**, under its group, from largest to
-  smallest. No selection: this is where the quarterly differs most from the monthly.
+- **Every feature of the group gets its line**, from largest to smallest. No selection.
   A feature not live yet in the quarter (the script lists them under *NOT LIVE IN THIS
-  QUARTER*) gets no block and stays out of the scope sentence.
+  QUARTER*) gets no line and stays out of the scope sentence.
 - **AI & Search is read at product domain level**: Agents and Search are its features,
   never individual agents.
 
@@ -143,8 +148,8 @@ it, and marked ⚠️ wherever the feature appears. It stays a normal candidate,
   step, `fct_user_actions` by action type, as for Search). Show the findings to the
   analyst and let them decide. Never record a verdict on your own.
 - **`misleading`**: the QoQ does not measure usage. The feature is set aside from the
-  highlights, and its 💡 line must say what happened and name the month the script
-  prints, e.g. "Q1 included a spike at the end of February 2026 ..., almost entirely from
+  highlights, and its domain's 💡 line must say what happened and name the month the
+  script prints, e.g. "Q1 included a spike at the end of February 2026 ..., almost entirely from
   <the one company>". One company: name it. A change in what is counted: say it only once
   confirmed, and record it in `TRACKING_CHANGES` as well.
 - **`real`**: a genuine change in usage, such as a large customer's launch. The feature
@@ -153,25 +158,32 @@ it, and marked ⚠️ wherever the feature appears. It stays a normal candidate,
 A verdict is keyed on (platform, feature, week), so it carries over to the next reports
 that still see the same anomaly.
 
-## The feature block
+## The domain block
 
-1. **Heading**: direction arrow, feature emoji, bold name, share of its group's Jobs Done.
-   ⬆️ when Jobs Done grew QoQ, ⬇️ when it fell, ➡️ when it moved by less than 0.05%.
-   Write such a change with two decimals (+0.04%), or "flat" when it rounds to 0.00%:
+1. **Heading**: `### <Domain group>`, the name only.
+2. **The Jobs Done line**: `- Jobs Done: <JD> (<QoQ> QoQ), <share>% of <Platform> Jobs Done`,
+   the group's figures as the script prints them.
+3. **`Features by Jobs Done:`**, then one line per feature:
+   `- <emoji> **<Feature>**: <JD> (<QoQ> QoQ), <share>% of the domain`. Write a share
+   under 0.1% with two decimals (0.04%), as the script prints it. Write a change under
+   0.05% either way with two decimals (+0.04%), or "flat" when it rounds to 0.00%:
    never "+0.0%" or "-0.0%".
-2. **Jobs Done** with its QoQ.
-3. **Users Completing Jobs** with its QoQ. For Beekeeper Workflows, write
-   `- Users Completing Jobs: not tracked`: the users metric is always 0 there.
-4. **Top 3 companies by Jobs Done**, in the script's order, each with its Jobs Done and
-   its share of the feature's Jobs Done. Write each name and slug exactly as the script
-   prints them. The list is internal: the analyst removes names before sharing further if
-   needed. Skip the list only when the script prints no company for the feature.
-5. **💡 One or two sentences** that say what the figures above cannot say on their own:
-   users and volume moving apart (frequency), a streak of quarters up or down, one
-   company carrying most of the feature. The script gives the streaks and frequencies.
-   A streak marked "in every quarter of the window (4+ in a row)" fills the whole fetched
-   window and may be longer: write "up in each of the last four quarters", never "a
-   fifth quarter" or any count the script did not print.
+4. **`Top 3 companies by Jobs Done:`**, the group's top 3 from the script (*Top 3
+   companies of the group*), each with its Jobs Done and its share of the group's Jobs
+   Done: `1. <Company> (<slug>), <JD> (<share>% of <Domain group> Jobs Done)`. Write each
+   name and slug exactly as the script prints them. The list is internal: the analyst
+   removes names before sharing further if needed. Skip the list only when the script
+   prints no company for the group. The per-feature top 3 the script also prints is
+   material for the 💡 line only.
+5. **💡 One or two sentences** for the whole domain, saying what the lines above cannot
+   say on their own: which feature drives the group's change, a streak of quarters up or
+   down, users and volume moving apart (frequency), one company carrying most of a
+   feature. The script gives the streaks, users and frequencies. A streak marked "in
+   every quarter of the window (4+ in a row)" fills the whole fetched window and may be
+   longer: write "up in each of the last four quarters", never "a fifth quarter" or any
+   count the script did not print. Every figure in it must come from the script output:
+   "by more than 10%" fails the check, quote the changes themselves.
+   Beekeeper Workflows has no users figure (always 0): never quote one for it.
 
 ## What the 💡 line must not do
 
@@ -181,5 +193,5 @@ that still see the same anomaly.
 - **No "grew 5.7x faster than users".** A ratio of two percentages misleads as soon as
   one of them is small. Say that volume grew more than users, and give both.
 - **Small features move a lot.** A +20% on a feature that is 2.5% of its group is worth
-  saying with that share next to it, as the heading already does. Never present it as
+  saying with that share next to it. Never present it as
   the story of the quarter.

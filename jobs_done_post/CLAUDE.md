@@ -16,8 +16,9 @@ mean, and how to read them.
 quarterly one. A **Claude Code hook runs the right one on every save** of
 `articles/article_*.md` or `articles/quarterly_*.md`, configured in `.claude/settings.json`
 at the repo root. What follows describes the monthly check; the quarterly one adds the
-shape of the article (one section per domain group, one block per feature, arrows, top 3
-companies in order). Nothing
+shape of the article (one block per domain group, one line per feature in size order,
+the group's top 3 companies in order), and once it passes the hook renders the
+quarterly article as HTML (`render_quarterly_html.py`). Nothing
 to remember and nothing to launch: write the article, the check runs, failures come back
 as an error. It can also be run by hand:
 
@@ -188,7 +189,8 @@ Jobs Done focuses on moments when a user **gets the core value** of a feature. E
 ## Known permanent data limitations
 
 - **Customer-level breakdowns** are only fetched for the quarterly top 3 companies
-  (`data/quarterly/<platform>_companies_*.csv`).
+  (`data/quarterly/<platform>_companies_*.csv` per feature,
+  `<platform>_group_companies_*.csv` per domain group).
 - **Never sum Jobs Done through the LumApps company join.** Grouping
   `fct_jobs_done__bi` by a `dim_lumapps_x_sf_organizations` field inflates the sums: in
   Q2 2026 it doubled a large customer's Videos Jobs Done, and inflated LumApps' whole

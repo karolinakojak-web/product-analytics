@@ -1,9 +1,9 @@
 ---
 name: quarterly-jobs-done-article
-description: Write the quarterly Jobs Done article covering LumApps and Beekeeper, with one block per feature and its top 3 companies, from fresh Looker data, and check it against the data before handing it over.
+description: Write the quarterly Jobs Done article covering LumApps and Beekeeper, with one block per domain group (its features and its top 3 companies), from fresh Looker data, check it against the data, and render it as the HTML block for the intranet.
 argument-hint: "[YYYY-QN] [editorial note]"
 disable-model-invocation: true
-allowed-tools: Bash(python3 jobs_done_post/prepare_quarterly.py), Bash(python3 jobs_done_post/prepare_quarterly.py *), Bash(python3 jobs_done_post/check_quarterly_article.py *)
+allowed-tools: Bash(python3 jobs_done_post/prepare_quarterly.py), Bash(python3 jobs_done_post/prepare_quarterly.py *), Bash(python3 jobs_done_post/check_quarterly_article.py *), Bash(python3 jobs_done_post/render_quarterly_html.py *)
 ---
 
 # Quarterly Jobs Done article
@@ -27,8 +27,8 @@ Run everything from the repository root.
    ```
 
    It pulls the quarter and the four before it into `jobs_done_post/data/quarterly/`, then
-   prints the platform totals, every feature by domain group with its QoQ, users,
-   frequency, streak and top 3 companies, the features not live yet in the quarter,
+   prints the platform totals, each domain group with its top 3 companies, every feature
+   by domain group with its QoQ, users, frequency, streak and top 3 companies, the features not live yet in the quarter,
    and the *HIGHLIGHTS* candidates for the two highlight sections, both platforms
    together, with the features set aside because their QoQ is not like for like, and
    the *STEPS AND SPIKES* in weekly Jobs Done with the companies behind each.
@@ -60,15 +60,27 @@ Run everything from the repository root.
    - `jobs_done_post/writing-rules.md`: the rules shared with the monthly article
      (tone, staying inside the metric, trend language, emoji, scope sentence, go-live).
    - [references/writing-rules.md](references/writing-rules.md): the quarterly structure,
-     the feature block, and what the 💡 line must not do.
+     the domain block, and what the 💡 line must not do.
 
-3. **Write the article** from the script output only, in English. Every feature of the
-   scope gets its block; there is no selection.
+3. **Write the article** from the script output only, in English, in the Markdown shape
+   of the rules. Every domain group of the scope gets its block, and every feature its
+   line in it; there is no selection.
 
 4. **Save it** as `jobs_done_post/articles/quarterly_YYYY-QN.md`. A hook runs
    `check_quarterly_article.py` on every save and sends failures back. Fix each one and
-   save again until it passes.
+   save again until it passes. Once the check passes, the same hook runs
+   `render_quarterly_html.py`, which writes `jobs_done_post/articles/quarterly_YYYY-QN.html`
+   next to it. If the hook did not run (manual edit), run both by hand:
 
-5. **Hand it over.** Give the path, then list the check's warnings (quantity words) with
+   ```bash
+   python3 jobs_done_post/check_quarterly_article.py jobs_done_post/articles/quarterly_YYYY-QN.md
+   python3 jobs_done_post/render_quarterly_html.py jobs_done_post/articles/quarterly_YYYY-QN.md
+   ```
+
+   Never edit the HTML by hand: fix the Markdown and save again. Never publish the HTML
+   as an Artifact: it names customers, so it stays a local file.
+
+5. **Hand it over.** Give the path of the HTML (the deliverable, to paste as embedded
+   content) and of the Markdown, then list the check's warnings (quantity words) with
    the figures behind each, and remind the user that the article names customers in the
    top 3 lists.

@@ -11,6 +11,7 @@ Writes to data/quarterly/, one file per platform and kind:
   <platform>_totals_YYYY-QN.csv      platform totals, last QUARTERS quarters
   <platform>_features_YYYY-QN.csv    domain group x feature, same quarters
   <platform>_companies_YYYY-QN.csv   top companies per feature, report quarter only
+  <platform>_group_companies_YYYY-QN.csv  top companies per domain group, same quarter
   <platform>_feature_weeks_YYYY-QN.csv  weekly Jobs Done per feature, report quarter and
                                         the one before, to catch steps and spikes
   <platform>_anomaly_drivers_YYYY-QN.csv  the companies behind each step or spike
@@ -43,11 +44,12 @@ from jobs_done_common import (GO_LIVE, LOOKER_PLATFORMS, QUARTERLY_EXCLUDED_TENA
 DATA_DIR = Path(__file__).parent / "data" / "quarterly"
 
 QUARTERS = 5          # the report quarter and the four before it
-TOP_COMPANIES = 5     # kept per feature; the article quotes the top 3
+TOP_COMPANIES = 5     # kept per feature and per domain group; the article quotes the top 3
 
 TOTAL_HEADERS = ["Quarter", "Jobs Done", "Jobs Done Users"]
 FEATURE_HEADERS = ["Quarter", "Product Domain Group", "Feature", "Jobs Done", "Jobs Done Users"]
 COMPANY_HEADERS = ["Product Domain Group", "Feature", "Rank", "Company", "Slug", "Jobs Done"]
+GROUP_COMPANY_HEADERS = ["Product Domain Group", "Rank", "Company", "Slug", "Jobs Done"]
 WEEK_HEADERS = ["Week", "Product Domain Group", "Feature", "Jobs Done"]
 INTEGRITY_HEADERS = ["Check", "Feature", "Tenant", "Value", "Expected"]
 DRIVER_HEADERS = ["Feature", "Kind", "Week", "Rank", "Company", "Slug", "Change", "Share of change"]
@@ -224,8 +226,19 @@ def fetch(quarter: str) -> None:
         # a few spares per feature, in case some of the top tenants have no name
         shortlist = {k: sorted(rows, key=lambda x: -x[jd])[:TOP_COMPANIES + 5]
                      for k, rows in ranked.items()}
+        # The article ranks companies per domain group too: each tenant's Jobs Done
+        # summed over every feature of the group, from the same tenant rows.
+        by_group: dict[str, dict] = {}
+        for (group, _), rows in ranked.items():
+            for r in rows:
+                by_group.setdefault(group, {}).setdefault(r[tenant], 0)
+                by_group[group][r[tenant]] += r[jd]
+        group_shortlist = {g: sorted(({tenant: t, jd: v} for t, v in ts.items()),
+                                     key=lambda x: -x[jd])[:TOP_COMPANIES + 5]
+                           for g, ts in by_group.items()}
         names = _company_names(sdk, cfg, in_quarter,
-                               {r[tenant] for rows in shortlist.values() for r in rows})
+                               {r[tenant] for rows in (*shortlist.values(), *group_shortlist.values())
+                                for r in rows})
         companies, integrity = [], []
         for (group, feature), rows in shortlist.items():
             named = [r for r in rows if r[tenant] in names][:TOP_COMPANIES]
@@ -241,6 +254,20 @@ def fetch(quarter: str) -> None:
                     integrity.append({"Check": "unnamed tenant in a top 3", "Feature": feature,
                                       "Tenant": r[tenant], "Value": r[jd], "Expected": ""})
         _write(DATA_DIR / f"{platform}_companies_{quarter}.csv", COMPANY_HEADERS, companies)
+        group_companies = []
+        for group, rows in group_shortlist.items():
+            named = [r for r in rows if r[tenant] in names][:TOP_COMPANIES]
+            for i, r in enumerate(named, 1):
+                name, slug = names[r[tenant]]
+                group_companies.append({"Product Domain Group": group, "Rank": i, "Company": name,
+                                        "Slug": slug, "Jobs Done": r[jd]})
+            cutoff = named[2][jd] if len(named) >= 3 else 0
+            for r in rows:
+                if r[tenant] not in names and r[jd] >= cutoff:
+                    integrity.append({"Check": "unnamed tenant in a top 3", "Feature": group,
+                                      "Tenant": r[tenant], "Value": r[jd], "Expected": ""})
+        _write(DATA_DIR / f"{platform}_group_companies_{quarter}.csv", GROUP_COMPANY_HEADERS,
+               group_companies)
 
         # The company join must not change the total: summed through it, the
         # quarter's Jobs Done must equal the plain total. More means the directory
@@ -336,6 +363,9 @@ def analyse(platform: str, quarter: str) -> list[dict]:
     companies: dict[tuple, list] = {}
     for r in _read(DATA_DIR / f"{platform}_companies_{quarter}.csv"):
         companies.setdefault((r["Product Domain Group"], r["Feature"]), []).append(r)
+    group_companies: dict[str, list] = {}
+    for r in _read(DATA_DIR / f"{platform}_group_companies_{quarter}.csv"):
+        group_companies.setdefault(r["Product Domain Group"], []).append(r)
 
     print(f"\n{'=' * 80}\n{platform.upper()} — PLATFORM TOTALS\n{'=' * 80}")
     print(f"  {'Quarter':<9} {'Jobs Done':>11} {'QoQ':>8} {'Users':>9} {'QoQ':>8}")
@@ -379,18 +409,25 @@ def analyse(platform: str, quarter: str) -> list[dict]:
     group_prev = {g: sum(r["prev_jd"] for r in rs) for g, rs in groups.items()}
 
     print(f"\n{'=' * 80}\n{platform.upper()} — BY PRODUCT DOMAIN GROUP ({quarter} vs {prev})\n{'=' * 80}")
-    print("  Every feature below gets its own block in the article.")
+    print("  Every feature below gets its line in its domain group's block, in this order.")
     for g in sorted(groups, key=lambda g: -group_jd[g]):
         print(f"\n  [{g}]  {fmt_n(group_jd[g])} JD, {fmt_pct(pct(group_jd[g], group_prev[g]))} QoQ, "
               f"{group_jd[g] / platform_jd * 100:.1f}% of the platform")
+        print("    Top 3 companies of the group (these go in the article):")
+        for c in group_companies.get(g, [])[:3]:
+            slug = f" ({c['Slug']})" if c["Slug"] else ""
+            print(f"      ({c['Rank']}) {c['Company']}{slug}, {fmt_n(_num(c['Jobs Done']))} "
+                  f"({_num(c['Jobs Done']) / group_jd[g] * 100:.1f}% of {g} JD)")
+        print("    Features (top 3 companies of each, for the 💡 line only):")
         for r in sorted(groups[g], key=lambda r: -r["jd"]):
             share = r["jd"] / group_jd[g] * 100
+            share = f"{share:.2f}" if share < 0.1 else f"{share:.1f}"
             users = (f"{fmt_n(r['users'])} users ({fmt_pct(r['users_qoq'])})" if r["users"]
                      else "users not tracked")
             freq = (f"freq {r['freq']:.1f}x ← {r['prev_freq']:.1f}x"
                     if r["freq"] and r["prev_freq"] else "")
             print(f"    {r['feature']}: {fmt_n(r['jd'])} JD ({fmt_pct(r['qoq'])} QoQ), "
-                  f"{share:.1f}% of {g}, {users}  {freq}  {r['streak']}".rstrip())
+                  f"{share}% of {g}, {users}  {freq}  {r['streak']}".rstrip())
             for c in companies.get((g, r["feature"]), [])[:3]:
                 slug = f" ({c['Slug']})" if c["Slug"] else ""
                 print(f"        ({c['Rank']}) {c['Company']}{slug}, {fmt_n(_num(c['Jobs Done']))} "
