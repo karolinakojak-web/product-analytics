@@ -27,7 +27,7 @@ Run everything from the repository root.
    ```
 
    It pulls the quarter and the four before it into `jobs_done_post/data/quarterly/`, then
-   prints the platform totals, each domain group with its top 3 companies, every feature
+   prints the platform totals (Jobs Done, Users Completing Jobs, MAU at quarter end), each domain group with its top 3 companies, every feature
    by domain group with its QoQ, users, frequency, streak and top 3 companies, the features not live yet in the quarter,
    and the *HIGHLIGHTS* candidates for the two highlight sections, both platforms
    together, with the features set aside because their QoQ is not like for like, and

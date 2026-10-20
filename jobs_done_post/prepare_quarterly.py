@@ -6,6 +6,9 @@ every day it contains:
 
   Jobs Done               daily Jobs Done summed over the quarter
   Users Completing Jobs   unique users over the whole quarter (not additive)
+  Monthly active users    MAU on the last day of the quarter: users active in its last
+                          28 days, platform level only. Not a quarterly active users
+                          count, so never a denominator for Users Completing Jobs.
 
 Writes to data/quarterly/, one file per platform and kind:
   <platform>_totals_YYYY-QN.csv      platform totals, last QUARTERS quarters
@@ -46,7 +49,7 @@ DATA_DIR = Path(__file__).parent / "data" / "quarterly"
 QUARTERS = 5          # the report quarter and the four before it
 TOP_COMPANIES = 5     # kept per feature and per domain group; the article quotes the top 3
 
-TOTAL_HEADERS = ["Quarter", "Jobs Done", "Jobs Done Users"]
+TOTAL_HEADERS = ["Quarter", "Jobs Done", "Jobs Done Users", "MAU"]
 FEATURE_HEADERS = ["Quarter", "Product Domain Group", "Feature", "Jobs Done", "Jobs Done Users"]
 COMPANY_HEADERS = ["Product Domain Group", "Feature", "Rank", "Company", "Slug", "Jobs Done"]
 GROUP_COMPANY_HEADERS = ["Product Domain Group", "Rank", "Company", "Slug", "Jobs Done"]
@@ -202,6 +205,12 @@ def fetch(quarter: str) -> None:
         totals = {looker_quarter(r[qdim]): {"Quarter": looker_quarter(r[qdim]),
                                             "Jobs Done": r[jd], "Jobs Done Users": r[users]}
                   for r in run_query(sdk, cfg, [qdim], [jd, users], every_day)}
+        # MAU is a rolling 28-day count, read on the quarter's last day. There is no
+        # active users measure over a whole quarter in either explore.
+        last_day = {**every_day, f"{p}.day_selection": "last^_day^_of^_quarter"}
+        for r in run_query(sdk, cfg, [qdim], [cfg["mau_field"]], last_day):
+            if looker_quarter(r[qdim]) in totals:
+                totals[looker_quarter(r[qdim])]["MAU"] = r[cfg["mau_field"]]
         _write(DATA_DIR / f"{platform}_totals_{quarter}.csv", TOTAL_HEADERS,
                sorted(totals.values(), key=lambda r: r.get("Quarter", ""), reverse=True))
 
@@ -368,16 +377,17 @@ def analyse(platform: str, quarter: str) -> list[dict]:
         group_companies.setdefault(r["Product Domain Group"], []).append(r)
 
     print(f"\n{'=' * 80}\n{platform.upper()} — PLATFORM TOTALS\n{'=' * 80}")
-    print(f"  {'Quarter':<9} {'Jobs Done':>11} {'QoQ':>8} {'Users':>9} {'QoQ':>8}")
+    print(f"  {'Quarter':<9} {'Jobs Done':>11} {'QoQ':>8} {'Users':>9} {'QoQ':>8} {'MAU':>9} {'QoQ':>8}")
     order = sorted(totals)
     for i, q in enumerate(order):
         r, b = totals[q], totals.get(order[i - 1]) if i else None
         cols = []
-        for c in ("Jobs Done", "Jobs Done Users"):
+        for c in ("Jobs Done", "Jobs Done Users", "MAU"):
             v = _num(r.get(c))
             cols += [fmt_n(v), fmt_pct(pct(v, _num(b.get(c)))) if b else "n/a"]
         mark = " ◄ report quarter" if q == quarter else ""
-        print(f"  {q:<9} {cols[0]:>11} {cols[1]:>8} {cols[2]:>9} {cols[3]:>8}{mark}")
+        print(f"  {q:<9} {cols[0]:>11} {cols[1]:>8} {cols[2]:>9} {cols[3]:>8} "
+              f"{cols[4]:>9} {cols[5]:>8}{mark}")
     if quarter not in totals:
         sys.exit(f"Error: {quarter} missing from the {platform} data. Re-run without --no-fetch.")
 
@@ -600,6 +610,8 @@ def main():
     print(f"QUARTERLY JOBS DONE ANALYTICS — {quarter} (compared with {shift_quarter(quarter, -1)})")
     print("Jobs Done: summed over every day of the quarter.")
     print("Users: unique users completing a job over the whole quarter (not additive).")
+    print("MAU: users active in the last 28 days of the quarter, platform level only. It goes\n"
+          "     in the overview as 'Monthly active users', never as a share of the Users column.")
     print(f"{'=' * 80}")
     if args.note:
         print(f"\nEDITORIAL NOTE FROM THE ANALYST — take this into account when writing\n  {args.note}")

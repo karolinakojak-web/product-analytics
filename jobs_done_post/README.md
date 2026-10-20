@@ -131,7 +131,9 @@ adds no figure of its own, so always fix the Markdown, never the HTML. The save 
 it after a passing check.
 
 A quarter is measured over every day it contains: Jobs Done summed day by day, Users
-Completing Jobs unique over the whole quarter. There is no MAU in the quarterly article. The script fetches the
+Completing Jobs unique over the whole quarter. Monthly active users is the MAU on the
+quarter's last day (users active in its last 28 days): neither explore holds an active
+users count over a whole quarter. The script fetches the
 report quarter and the four before it, and warns when the quarter is not over yet.
 Wait a day or two after the quarter ends so its last day has landed in Looker.
 

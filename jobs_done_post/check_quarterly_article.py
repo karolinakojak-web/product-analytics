@@ -36,6 +36,8 @@ GROUP_LINE = re.compile(r"^- Jobs Done: \S+ \((?:[+-][\d.]+%|flat) QoQ\), [\d.]+
 FEATURES_LABEL = "Features by Jobs Done:"
 FEATURE_LINE = re.compile(r"^- (\S+)\s+\*\*([^*]+)\*\*: \S+ \(([^)]*)\), [\d.]+% of the domain$", re.M)
 COMPANIES_LABEL = "Top 3 companies by Jobs Done:"
+MAU_LABEL = "📈 Monthly active users"
+UCJ_LABEL = "👥 Users Completing Jobs"
 FIXED = [
     ("*Full breakdown available in the [LumApps Jobs Done dashboard]", "italicised LumApps dashboard link"),
     ("*Full breakdown available in the [Beekeeper Jobs Done dashboard]", "italicised Beekeeper dashboard link"),
@@ -113,7 +115,7 @@ def platform_values(totals, quarter):
     if not cur:
         sys.exit(f"[check_quarterly] {quarter} missing from the data")
     out = []
-    for col in ("Jobs Done", "Jobs Done Users"):
+    for col in ("Jobs Done", "Jobs Done Users", "MAU"):
         v = num(cur.get(col))
         out += scaled(v)
         if prev:
@@ -344,9 +346,13 @@ def main():
     for needle, what in [(opening, "standard opening"), (definition, "QoQ definition line")] + FIXED:
         if needle not in text:
             failures.append(f"missing {what}")
-    # No MAU in the quarterly: "active users" would read as the whole active base.
-    for hit in re.finditer(r"\bactive users?\b", text, re.I):
-        failures.append(f"'{hit.group(0)}': the quarterly has no MAU, write 'Users Completing Jobs'")
+    # MAU has its one overview section, just before Users Completing Jobs. Anywhere
+    # else, "active users" would read as a quarterly count or blur with the users figure.
+    mau_at, ucj_at = text.find(f"\n{MAU_LABEL}\n"), text.find(f"\n{UCJ_LABEL}\n")
+    if mau_at < 0 or ucj_at < 0 or mau_at > ucj_at:
+        failures.append(f"the overview needs '{MAU_LABEL}' then '{UCJ_LABEL}'")
+    for hit in re.finditer(r"\bactive users?\b", text.replace(MAU_LABEL, ""), re.I):
+        failures.append(f"'{hit.group(0)}': MAU belongs in the overview only, write 'Users Completing Jobs'")
     # the fixed section titles hold "the most", which is not a claim
     check_wording(text.replace(GREW, "").replace(DECLINED, ""), failures, warnings)
 

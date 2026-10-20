@@ -160,9 +160,11 @@ def split_on(lines: list[str], prefix: str) -> list[tuple[str, list[str]]]:
 
 def render_overview(lines: list[str], quarter: str) -> str:
     out, blocks = [], []
-    subtitle = {"Jobs Done": f"Jobs Done in {quarter}", "Users Completing Jobs": "unique users over the quarter"}
+    subtitle = {"Jobs Done": f"Jobs Done in {quarter}",
+                "Monthly active users": "active in the last 28 days of the quarter",
+                "Users Completing Jobs": "unique users over the quarter"}
     for line in lines:
-        if line.startswith(("✅", "👥")):
+        if line.startswith(("✅", "📈", "👥")):
             blocks.append((line.strip(), []))
         elif line.startswith("- ") and blocks:
             m = OVERVIEW_ITEM.match(line.strip())
@@ -170,7 +172,9 @@ def render_overview(lines: list[str], quarter: str) -> str:
                 raise Unreadable(f"overview line: {line!r}")
             blocks[-1][1].append(m.groups())
     for label, items in blocks:
-        kind = "Users Completing Jobs" if "Users" in label else "Jobs Done"
+        kind = next((k for k in subtitle if k in label), None)
+        if not kind:
+            raise Unreadable(f"overview label: {label!r}")
         tiles = "".join(
             f'<div class="jdq-tile jdq-{PLATFORMS[p]}"><span class="jdq-tl">{p}</span>'
             f'<span class="jdq-tv">{html.escape(v)}</span>'

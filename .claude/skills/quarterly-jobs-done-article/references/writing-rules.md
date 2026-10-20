@@ -14,12 +14,17 @@ measures the whole quarter:
 |---|---|
 | Jobs Done | daily Jobs Done summed over every day of the quarter |
 | Users Completing Jobs | unique users who completed that job at least once in the quarter |
+| Monthly active users | MAU on the last day of the quarter: users active in its last 28 days |
 
-There is no MAU in the quarterly article: the users figure is Users Completing Jobs over
-the quarter, at platform level in the overview. The domain blocks show no users figure;
-a 💡 line may quote a feature's users from the script output. Call it
-"Users Completing Jobs", never "active users", which reads as the whole active base.
-Users do not add up across features or domain groups: only Jobs Done does.
+The overview shows both users figures at platform level, Monthly active users just before
+Users Completing Jobs. The MAU is not a quarterly active users count: it covers 28 days,
+while Users Completing Jobs covers the whole quarter and is larger. Never divide one by
+the other, never write a share of the active base, and never quote MAU outside its
+overview section. "Active users" appears in that section title only.
+
+The domain blocks show no users figure; a 💡 line may quote a feature's users from the
+script output, as "Users Completing Jobs". Users do not add up across features or domain
+groups: only Jobs Done does.
 
 Every change compares the quarter with the one before (QoQ). No year-over-year figure.
 
@@ -43,6 +48,10 @@ Hi Team, here is how our key product usage KPI, Jobs Done, performed in Q2 2026 
 ✅️ Jobs Done
 - LumApps 385.8M (+7.2% QoQ)
 - Beekeeper 114.8M (-0.9% QoQ)
+
+📈 Monthly active users
+- LumApps 2.84M (+1.6% QoQ)
+- Beekeeper 697.5K (+0.6% QoQ)
 
 👥 Users Completing Jobs
 - LumApps 3.49M (+5.6% QoQ)

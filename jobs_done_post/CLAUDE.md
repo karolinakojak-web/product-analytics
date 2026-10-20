@@ -235,5 +235,9 @@ Jobs Done focuses on moments when a user **gets the core value** of a feature. E
   known yet. Monthly figures read the window, so they carry this gap; the volume check
   only alerts when it moves.
 - **MAU** comes from the `_all_` files. If those files are missing, note MAU is unavailable.
+- **No active users count over a quarter exists.** The quarterly article's *Monthly active
+  users* is the MAU on the quarter's last day (users active in its last 28 days). Its
+  Users Completing Jobs count the whole quarter and are larger, so never divide one by
+  the other.
 
 ---
