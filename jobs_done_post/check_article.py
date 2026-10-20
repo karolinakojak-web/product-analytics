@@ -10,9 +10,13 @@ Two families of checks:
            has: the July 2026 issue stated Content at -0.5% MoM when it had in
            fact grown +0.5%, which is the class of error this catches.
 
-  RULES    the editorial conventions recorded in
+  RULES    the editorial conventions recorded in jobs_done_post/writing-rules.md and
            .claude/skills/monthly-jobs-done-article/references/writing-rules.md. Deterministic, so
            they never depend on anyone remembering them.
+
+  VOLUME   no daily volume alert left without a verdict, and a "*Data warning: ...*"
+           line when a data incident is on record for the period (prepare_data.py
+           and the "Data volume" section of jobs_done_common.py).
 
 Exit codes: 0 clean, 1 failures, 2 the article or its data could not be read.
 Warnings never fail the run; they ask a human to confirm a judgement the script
@@ -24,73 +28,19 @@ import re
 import sys
 from pathlib import Path
 
+from jobs_done_common import (EMOJI, FRESH_HOURS, GO_LIVE, SCOPE, SCOPE_GROUP, YOY,
+                              check_numbers, check_volume, check_wording, num, pct, stale)
+
 HERE = Path(__file__).resolve().parent
 DATA_DIR = HERE / "data"
 
-# Authoritative emoji per feature, mirroring the list in the writing rules
-# (.claude/skills/monthly-jobs-done-article/references/writing-rules.md).
-EMOJI = {
-    "Content": "\U0001f4c4", "Chats": "\U0001f4ac", "Streams": "\U0001f4e1",
-    "Spaces": "\U0001f3e0", "Posts": "\U0001f4dd", "Videos": "\U0001f3ac",
-    "Reactions": "\U0001f44d", "Surveys": "\U0001f4ca", "Tasks": "☑️",
-    "Shifts": "\U0001f4c5", "Forms": "\U0001f5c2️", "Shortcuts": "\U0001f517",
-    "Campaigns": "\U0001f4e2", "Company Events": "\U0001f4c6", "Workflows": "⚙️",
-    "Comments": "\U0001f5e8️", "Documents": "\U0001f4c1", "Referrals": "\U0001f91d",
-    "Agents": "\U0001f916", "Search": "\U0001f50d",
-}
-
-BANNED = [
-    (r"—",                          "em dash"),
-    (r"\brecover(ed|s|ing)?\b",          "recovery verb (needs 3+ months of context)"),
-    (r"\bbounced? back\b",               "recovery verb"),
-    (r"\brebound(ed|s|ing)?\b",          "recovery verb"),
-    (r"\b(second-)?best (month|KPI)\b",  "superlative ranking over time"),
-    (r"\bstrongest\b.{0,30}\b(of|in) \d{4}\b", "superlative ranking over time"),
-    (r"\bhighest ever\b|\brecord (high|month)\b", "superlative ranking over time"),
-    (r"\baccounts? for (almost |nearly )?(all|the entire)\b", "analyst phrasing"),
-    (r"\bswing\b",                       "analyst vocabulary"),
-    (r"\bcontribution\b",                "analyst vocabulary"),
-    (r"\bpenetration\b",                 "analyst vocabulary"),
-    # Jobs Done covers one action on a subset of features, so these phrasings claim
-    # more than the data supports. See "Claims must stay inside the metric".
-    (r"\b(biggest|largest|most[- ]used) feature\b",
-     "platform-wide ranking; write 'the largest of the features we track'"),
-    (r"\bused by \*{0,2}\d",
-     "'used by X%' implies general feature usage; write 'X% of active users completed a <feature> job'"),
-]
-
-# Quantity words are claims. The script cannot judge them, so it surfaces them.
-QUANTITY = r"\b(most|nearly all|almost all|half|the bulk of|a third|two thirds|majority)\b"
-
-YOY = r"(YoY|year[- ]over[- ]year|last (January|February|March|April|May|June|July|August|September|October|November|December)|over twelve months|versus \w+ \d{4}|compared to \w+ \d{4})"
-
-NUM = re.compile(r"(?<![\w.])([+-]?)(\d[\d,]*(?:\.\d+)?)\s*(M|K|%)")
-
-# Each platform section opens on a sentence listing what Jobs Done covers:
-#   Jobs Done covers <Domain> (<Feature>, <Feature>) and <Domain> (<Feature>).
-# The scope keeps growing, so the sentence is compared with the data every month.
-SCOPE = re.compile(r"^Jobs Done covers (.+)$", re.M)
-SCOPE_GROUP = re.compile(r"([A-Z][\w &]*?) \(([^)]*)\)")
 SCOPE_SENTENCE_FROM = "2026-09"   # first issue carrying the sentence
 
-# Features whose data is backfilled before they joined Jobs Done. They stay out of
-# the scope sentence, and out of the article, until their go-live month.
-GO_LIVE = {"Agents": "2026-09", "Search": "2026-09"}
+READ = []   # data files the check read, for the freshness check
 
 
 def fail(msg):
     print(f"  KO  {msg}")
-
-
-def num(v):
-    try:
-        return float(str(v).replace(",", "").strip() or 0)
-    except ValueError:
-        return 0.0
-
-
-def pct(a, b):
-    return None if not b else (a - b) / b * 100
 
 
 def adj(ym, d):
@@ -107,7 +57,8 @@ def load(platform):
         return f[-1] if f else None
     a_path, f_path = latest(f"{platform}_all_*.csv"), latest(f"{platform}_features_*.csv")
     if not a_path or not f_path:
-        sys.exit(f"[check_article] no data for {platform} in {DATA_DIR}. Run: python3 prepare_data.py --fetch")
+        sys.exit(f"[check_article] no data for {platform} in {DATA_DIR}. Run: python3 prepare_data.py")
+    READ.extend([a_path, f_path])
     allr, feat = {}, {}
     with open(a_path, encoding="utf-8") as fh:
         for r in csv.DictReader(fh):
@@ -123,6 +74,7 @@ def load_agents(platform):
     f = sorted(DATA_DIR.glob(f"{platform}_agents_*.csv"))
     if not f:
         return {}
+    READ.append(f[-1])
     out = {}
     with open(f[-1], encoding="utf-8") as fh:
         for r in csv.DictReader(fh):
@@ -237,39 +189,6 @@ def check_scope(sec, feat, month, plat, failures):
             failures.append(f"{plat}: scope sentence lists {f} under {d}, which is not tracked in {month}")
 
 
-APPROX = re.compile(r"\b(about|roughly|around|nearly|almost|some|close to|just over|just under)\s*$", re.I)
-
-
-def check_numbers(block, allowed, label, failures):
-    """Every M/K/% figure in `block` must trace to `allowed`.
-
-    A figure introduced by an approximation word ("about 70%") is matched with a
-    tolerance, because rounding 69.6 to 70 is honest writing, not a wrong number.
-    """
-    signed = {(u, round(v, 1)) for u, v in allowed}
-    mags = {(u, round(abs(v), 1)) for u, v in allowed} | {(u, round(abs(v), 2)) for u, v in allowed}
-    for match in NUM.finditer(block):
-        sign, raw, unit = match.groups()
-        val = float(raw.replace(",", ""))
-        if APPROX.search(block[max(0, match.start() - 14):match.start()]):
-            tol = max(1.0, abs(val) * 0.02)
-            if any(u == unit and abs(abs(v) - abs(val)) <= tol for u, v in allowed):
-                continue
-            failures.append(f"{label}: approximate '{raw}{unit}' is not close to any figure in the data")
-            continue
-        if sign:
-            want = val if sign == "+" else -val
-            if (unit, round(want, 1)) in signed:
-                continue
-            if (unit, round(-want, 1)) in signed:
-                failures.append(f"{label}: '{sign}{raw}{unit}' has the wrong sign "
-                                f"(the data says {-want:+.1f}{unit})")
-                continue
-            failures.append(f"{label}: '{sign}{raw}{unit}' matches no figure in the data")
-        elif (unit, round(val, 1)) not in mags and (unit, round(val, 2)) not in mags:
-            failures.append(f"{label}: '{raw}{unit}' matches no figure in the data")
-
-
 def main():
     if len(sys.argv) != 2:
         sys.exit("usage: check_article.py articles/article_YYYY-MM.md")
@@ -296,10 +215,8 @@ def main():
         if needle not in text:
             failures.append(f"missing {what}")
 
-    # ---- banned wording --------------------------------------------------
-    for pattern, why in BANNED:
-        for hit in re.finditer(pattern, text, re.I):
-            failures.append(f"{why}: {hit.group(0)!r}")
+    # ---- wording ---------------------------------------------------------
+    check_wording(text, failures, warnings)
 
     # ---- sections --------------------------------------------------------
     overview = text.split("## LumApps")[0]
@@ -320,9 +237,6 @@ def main():
             fm = re.search(r"\*\*([A-Z][\w &]*?)\*\*", p)
             if fm and fm.group(1) in EMOJI and EMOJI[fm.group(1)] not in p:
                 failures.append(f"{plat}: {fm.group(1)} should use {EMOJI[fm.group(1)]}")
-
-    for hit in re.finditer(QUANTITY, text, re.I):
-        warnings.append(f"quantity word {hit.group(0)!r} - confirm it against the figures")
 
     # ---- figures ---------------------------------------------------------
     la_all, la_feat = load("lumapps")
@@ -345,6 +259,23 @@ def main():
             check_numbers(p, allowed + (vals or []), f"{plat}/{fm.group(1) if fm else 'intro'}",
                           failures)
 
+    # ---- data volume -----------------------------------------------------
+    # A broken pipeline leaves the figures traceable but wrong.
+    import prepare_data
+    check_volume(prepare_data.volume_alerts(month), text, failures)
+    for plat in ("lumapps", "beekeeper"):
+        vol = DATA_DIR / f"{plat}_daily_volume_{month}.csv"
+        if vol.exists():
+            READ.append(vol)
+        else:
+            failures.append(f"no daily volume on file for {plat}: re-run python3 prepare_data.py "
+                            f"--month {month}")
+
+    # ---- freshness -------------------------------------------------------
+    for p, hours in stale(READ):
+        failures.append(f"data is {hours:.0f}h old ({p.name}): an article is checked on data "
+                        f"fetched within {FRESH_HOURS}h. Re-run python3 prepare_data.py")
+
     # ---- report ----------------------------------------------------------
     print(f"[check_article] {path.name} ({month})")
     for w in warnings:
@@ -353,7 +284,7 @@ def main():
         fail(f)
     if failures:
         print(f"\n  {len(failures)} failure(s). Fix the article, or the data is stale: "
-              f"python3 prepare_data.py --fetch")
+              f"python3 prepare_data.py")
         return 1
     print(f"  OK  no failures ({len(warnings)} warning(s))")
     return 0
