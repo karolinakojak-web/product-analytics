@@ -75,6 +75,8 @@ def looker_sdk_or_exit():
         if not os.environ.get(var):
             sys.exit(f"Error: {var} is not set. See .env.example.")
     print(f"[looker] {os.environ['LOOKERSDK_BASE_URL']}", file=sys.stderr)
+    # The SDK default (120 s) is too short when the Jobs Done dashboard is slow
+    os.environ.setdefault("LOOKERSDK_TIMEOUT", "240")
     return looker_sdk.init40()
 
 
