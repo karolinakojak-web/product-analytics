@@ -17,8 +17,9 @@ quarterly one. A **Claude Code hook runs the right one on every save** of
 `articles/article_*.md` or `articles/quarterly_*.md`, configured in `.claude/settings.json`
 at the repo root. What follows describes the monthly check; the quarterly one adds the
 shape of the article (one block per domain group, one line per feature in size order,
-the group's top 3 companies in order), and once it passes the hook renders the
-quarterly article as HTML (`render_quarterly_html.py`). Nothing
+the group's top 3 companies in order). Once a check passes, the hook renders the
+article as HTML: `render_monthly_html.py` for a monthly one, `render_quarterly_html.py`
+for a quarterly one. Nothing
 to remember and nothing to launch: write the article, the check runs, failures come back
 as an error. It can also be run by hand:
 

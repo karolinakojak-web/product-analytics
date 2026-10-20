@@ -8,7 +8,7 @@ quarterly one.
 | Skill | `/monthly-jobs-done-article` | `/quarterly-jobs-done-article` |
 | Data and analysis | `prepare_data.py` | `prepare_quarterly.py` |
 | Check | `check_article.py` | `check_quarterly_article.py` |
-| Article | `articles/article_YYYY-MM.md` | `articles/quarterly_YYYY-QN.md`, rendered as `.html` by `render_quarterly_html.py` |
+| Article | `articles/article_YYYY-MM.md`, rendered as `.html` by `render_monthly_html.py` | `articles/quarterly_YYYY-QN.md`, rendered as `.html` by `render_quarterly_html.py` |
 | Shape | 2 to 3 features per platform | one block per domain group: every feature, and the group's top 3 companies |
 
 Both read the same Looker explores and share their writing rules
@@ -56,6 +56,15 @@ In Claude Code, from the repository root:
 
 The skill runs the steps below, writes the article following its rules, and fixes
 whatever the check reports. The arguments are optional: a month, then an editorial note.
+
+Once the check passes, the save hook writes `articles/article_YYYY-MM.html`: one
+`<style>` and one `<div>`, to paste as embedded content in the intranet page, in the
+same look as the quarterly block. It lays out the checked Markdown and adds no figure of
+its own, so always fix the Markdown, never the HTML. By hand:
+
+```bash
+python3 render_monthly_html.py articles/article_2026-09.md
+```
 
 ### Running the script by hand
 
@@ -203,12 +212,13 @@ jobs_done_post/
 ├── jobs_done_common.py         Looker config, emoji, go-live, reviews, shared checks
 ├── prepare_data.py             monthly: Looker fetch + analysis
 ├── check_article.py            monthly: article verification
+├── render_monthly_html.py      monthly: the checked article as an HTML block
 ├── prepare_quarterly.py        quarterly: Looker fetch + analysis
 ├── check_quarterly_article.py  quarterly: article verification
 ├── render_quarterly_html.py    quarterly: the checked article as an HTML block
 ├── requirements.txt
 ├── .env.example
-├── articles/           article_YYYY-MM.md, quarterly_YYYY-QN.md and .html
+├── articles/           article_YYYY-MM.md, quarterly_YYYY-QN.md and their .html
 └── data/               gitignored, regenerated on every run
     ├── <platform>_all_YYYY-MM.csv        platform totals
     ├── <platform>_features_YYYY-MM.csv   domain group x feature

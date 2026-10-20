@@ -1,9 +1,9 @@
 ---
 name: monthly-jobs-done-article
-description: Write the monthly Jobs Done article covering LumApps and Beekeeper, from fresh Looker data, and check it against the data before handing it over.
+description: Write the monthly Jobs Done article covering LumApps and Beekeeper, from fresh Looker data, check it against the data, and render it as the HTML block for the intranet.
 argument-hint: "[YYYY-MM] [editorial note]"
 disable-model-invocation: true
-allowed-tools: Bash(python3 jobs_done_post/prepare_data.py), Bash(python3 jobs_done_post/prepare_data.py *), Bash(python3 jobs_done_post/check_article.py *)
+allowed-tools: Bash(python3 jobs_done_post/prepare_data.py), Bash(python3 jobs_done_post/prepare_data.py *), Bash(python3 jobs_done_post/check_article.py *), Bash(python3 jobs_done_post/render_monthly_html.py *)
 ---
 
 # Monthly Jobs Done article
@@ -58,8 +58,19 @@ location, so the paths below work as written.
 4. **Save it** as `jobs_done_post/articles/article_YYYY-MM.md`. A hook runs
    `check_article.py` on every save and sends failures back. Fix each one and save again
    until it passes. If a figure fails and the prose looks right, the data may be stale:
-   re-run step 1 before rewriting.
+   re-run step 1 before rewriting. Once the check passes, the same hook runs
+   `render_monthly_html.py`, which writes `jobs_done_post/articles/article_YYYY-MM.html`
+   next to it. If the hook did not run (manual edit), run both by hand:
 
-5. **Hand it over.** Give the path, then list the check's warnings (quantity words such as
+   ```bash
+   python3 jobs_done_post/check_article.py jobs_done_post/articles/article_YYYY-MM.md
+   python3 jobs_done_post/render_monthly_html.py jobs_done_post/articles/article_YYYY-MM.md
+   ```
+
+   Never edit the HTML by hand: fix the Markdown and save again. Never publish the HTML
+   as an Artifact: an agent name can be a customer name, so it stays a local file.
+
+5. **Hand it over.** Give the path of the HTML (the deliverable, to paste as embedded
+   content) and of the Markdown, then list the check's warnings (quantity words such as
    "most" or "a third") with the figures behind each, so the user can confirm them. Those
    are judgements the script cannot make.
