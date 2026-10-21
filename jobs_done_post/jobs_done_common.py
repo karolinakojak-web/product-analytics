@@ -145,6 +145,61 @@ EMOJI = {
 # includes a feature whose go-live month falls inside it.
 GO_LIVE = {"Agents": "2026-09", "Search": "2026-09"}
 
+# The glossary that opens the rendered article: what each metric and each feature
+# counts, in a few plain words for readers outside the data team. A feature name says
+# little about its key action ("Content" counts page views, not pages created), so each
+# definition says what one Job Done is. Keep them to one short sentence.
+# Taken from the definitions themselves, checked on 21 October 2026:
+#   LumApps    dataplatform hm/dbt/local_seeds/product_action_mapping.csv
+#              (jobs_done_action), and fct_jobs_done_1d.sql for Agents, Search, Ask AI
+#   Beekeeper  ClickHouse production.jobs_done_versions (version 2026.1) and the
+#              filters in the bkpr_is_jobs_done_event function
+# Update an entry when its definition changes upstream. The render fails on a feature
+# of the scope sentence that has no entry here.
+GLOSSARY_METRICS = [
+    ("Jobs Done", "Number of key actions, over the last 28 days of the month."),
+    ("Users Completing Jobs", "Unique users who did the key action."),
+    ("MAU", "Monthly active users: unique users active on the platform."),
+    ("MoM / YoY", "Change against one month / one year earlier."),
+]
+# Over a quarter, Jobs Done and Users Completing Jobs cover the whole quarter, while
+# MAU stays a 28-day count (see "No active users count over a quarter" in CLAUDE.md).
+GLOSSARY_METRICS_QUARTERLY = [
+    ("Jobs Done", "Number of key actions over the quarter."),
+    ("Users Completing Jobs", "Unique users who did the key action over the quarter."),
+    ("Monthly active users", "Unique users active on the platform in the last 28 days of the quarter."),
+    ("QoQ", "Change against the previous quarter."),
+]
+FEATURE_DEFINITIONS = {
+    "LumApps": {
+        "Content": "A user opens a content.",
+        "Posts": "A user opens a post.",
+        "Spaces": "A user opens a space.",
+        "Videos": "A user plays a video.",
+        "Comments": "A user publishes a comment.",
+        "Reactions": "A user adds a reaction.",
+        "Search": "A user searches and clicks a result.",
+        "Agents": "A user has a conversation with an AI agent.",
+        "Ask AI": "A user gets an Ask AI answer.",
+    },
+    "Beekeeper": {
+        "Streams": "A user reads a post.",
+        "Chats": "A user sends a message.",
+        "Comments": "A user publishes a comment.",
+        "Reactions": "A user adds a reaction.",
+        "Documents": "A user opens a file.",
+        "Company Events": "A user opens an event.",
+        "Shortcuts": "A user clicks a shortcut.",
+        "Shifts": "A user opens their shift calendar.",
+        "Workflows": "A workflow run finishes.",
+        "Forms": "A user submits a form.",
+        "Tasks": "A user completes a task.",
+        "Campaigns": "A user opens a campaign.",
+        "Surveys": "A user completes a survey.",
+        "Referrals": "A user shares a job offer.",
+    },
+}
+
 # Tenants left out of the quarterly article, by platform, as {tenant_gid: reason}.
 # Empty: every customer is kept. The LumApps internal tenant (5769928858664960) was
 # excluded for a while, then kept on 8 October 2026 pending a decision with Karolina.

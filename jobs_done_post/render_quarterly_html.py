@@ -8,7 +8,8 @@ as embedded content. Every figure comes from the Markdown article, which
 check_quarterly_article.py has already traced to the data: this script only lays it
 out (tiles for the overview, one card per domain group with its features and its top
 3 companies). It adds no figure of its own, except the bar widths, drawn from the
-shares the article prints.
+shares the article prints. Above the overview, it adds a folded glossary: the metrics,
+and what one Job Done is for each feature of the scope sentences.
 
 It fails on a line it cannot read, so a layout change never drops content silently.
 """
@@ -17,6 +18,9 @@ import html
 import re
 import sys
 from pathlib import Path
+
+from jobs_done_common import (EMOJI, FEATURE_DEFINITIONS, GLOSSARY_METRICS_QUARTERLY, SCOPE,
+                              SCOPE_GROUP)
 
 CSS = """\
 .jdq { --jdq-bg: #f6f7f9; --jdq-surface: #ffffff; --jdq-ink: #18202b; --jdq-muted: #5b6676;
@@ -29,7 +33,6 @@ CSS = """\
   max-width: 1080px; margin-inline: auto; padding-inline: 20px; }  /* centred column, as in the published pages */
 .jdq, .jdq * { box-sizing: border-box; }
 .jdq p, .jdq ol, .jdq ul, .jdq h2 { margin: 0; padding: 0; }
-.jdq .jdq-def { font-size: 12.5px; color: var(--jdq-muted); margin: -12px 0 0; }  /* small, just before the overview */
 .jdq .jdq-mast { display: grid; gap: 8px; }
 .jdq .jdq-eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--jdq-muted); }
 .jdq .jdq-title { font-size: 30px; line-height: 1.2; font-weight: 700; }
@@ -83,11 +86,37 @@ CSS = """\
 .jdq .jdq-insight { font-size: 14px; background: var(--jdq-bg); border-radius: 8px; padding: 8px 12px; }
 .jdq .jdq-footer { font-size: 13px; color: var(--jdq-muted); font-style: italic; }
 .jdq a { color: var(--jdq-lum); text-decoration: underline; }
+/* the glossary, folded above the overview (render_glossary) */
+.jdq .jdq-gloss { background: var(--jdq-surface); border: 1px solid var(--jdq-line); border-left: 4px solid var(--jdq-down); border-radius: 10px; }
+.jdq .jdq-gloss > summary { cursor: pointer; padding: 12px 16px; list-style: none; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.jdq .jdq-gloss > summary::-webkit-details-marker { display: none; }
+.jdq .jdq-gloss > summary:hover { background: var(--jdq-bg); border-radius: 10px; }
+.jdq .jdq-gtitle { font-weight: 600; }
+.jdq .jdq-gtitle span { display: block; font-weight: 400; font-size: 13px; color: var(--jdq-muted); }
+.jdq .jdq-gbtn { margin-left: auto; font-size: 13px; font-weight: 600; color: #fff; background: var(--jdq-down);
+  border-radius: 999px; padding: 5px 14px; white-space: nowrap; }  /* reads as a button, so readers know it opens */
+.jdq .jdq-gbtn::after { content: "Show definitions ▾"; }
+.jdq .jdq-gloss[open] .jdq-gbtn { background: var(--jdq-flat-bg); color: var(--jdq-ink); }
+.jdq .jdq-gloss[open] .jdq-gbtn::after { content: "Hide ▴"; }
+.jdq .jdq-gbody { display: grid; gap: 18px; padding: 4px 16px 16px; }
+.jdq .jdq-terms { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.jdq .jdq-term { background: var(--jdq-bg); border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+.jdq .jdq-term strong { display: block; font-size: 13.5px; }
+.jdq .jdq-gcols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start; }
+.jdq .jdq-gplat { display: grid; gap: 6px; }  /* the coloured label names the platform, no side bar */
+.jdq .jdq-gplat .jdq-klabel { color: var(--jdq-lum); }
+.jdq .jdq-gplat.jdq-beekeeper .jdq-klabel { color: var(--jdq-bee); }
+.jdq .jdq-gdef { display: grid; grid-template-columns: minmax(6.5em, 9em) minmax(0, 1fr); gap: 10px;
+  font-size: 13.5px; padding: 5px 0; border-top: 1px solid var(--jdq-line); }
+.jdq .jdq-klabel + .jdq-gdef { border-top: 0; }
 @media (max-width: 760px) {
   .jdq .jdq-cols, .jdq .jdq-hl, .jdq .jdq-tiles { grid-template-columns: 1fr; }
+  .jdq .jdq-terms { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .jdq .jdq-gcols { grid-template-columns: 1fr; }
 }
 @media (max-width: 520px) {
   .jdq { padding: 14px; }
+  .jdq .jdq-terms, .jdq .jdq-gdef { grid-template-columns: 1fr; gap: 2px; }
   .jdq .jdq-frow { grid-template-columns: minmax(0, 1fr) 3.4em 4.4em 4.8em; }
   .jdq .jdq-trow { grid-template-columns: minmax(0, 1fr) 3.4em 4.4em; }
   .jdq .jdq-bar, .jdq .jdq-colh .jdq-hb { display: none; }
@@ -156,6 +185,38 @@ def split_on(lines: list[str], prefix: str) -> list[tuple[str, list[str]]]:
         elif out:
             out[-1][1].append(line)
     return out
+
+
+def scope_features(lines: list[str]) -> list[str]:
+    """The features of a platform's scope sentence, in its order. None before September
+    2026, when articles had no scope sentence: the glossary then leaves the platform out."""
+    m = SCOPE.search("\n".join(lines))
+    if not m:
+        return []
+    return [f.strip() for _, fs in SCOPE_GROUP.findall(m.group(1)) for f in fs.split(",")]
+
+
+def render_glossary(scopes: dict[str, list[str]], metrics: list[tuple[str, str]]) -> str:
+    """What each metric and each feature of the scope sentences counts, folded by
+    default. Shared with the monthly render; each passes its own metric terms. The
+    definitions live in jobs_done_common.py."""
+    terms = "".join(f'<div class="jdq-term"><strong>{html.escape(t)}</strong>{html.escape(d)}</div>'
+                    for t, d in metrics)
+    cols = []
+    for platform, features in scopes.items():
+        defs = FEATURE_DEFINITIONS[platform]
+        missing = [f for f in features if f not in defs]
+        if missing:
+            raise Unreadable(f"{platform}: no FEATURE_DEFINITIONS entry for {', '.join(missing)}")
+        rows = "".join(f'<div class="jdq-gdef"><strong>{EMOJI.get(f, "")} {html.escape(f)}</strong>'
+                       f'<span>{html.escape(defs[f])}</span></div>' for f in features)
+        cols.append(f'<div class="jdq-gplat jdq-{PLATFORMS[platform]}">'
+                    f'<div class="jdq-klabel">{platform}: one Job Done is</div>{rows}</div>')
+    return (f'<details class="jdq-gloss"><summary><span class="jdq-gtitle">📖 What the numbers count'
+            f'<span>Content counts page views, not pages created. Open for every feature.</span></span>'
+            f'<span class="jdq-gbtn" aria-hidden="true"></span></summary>'
+            f'<div class="jdq-gbody"><div class="jdq-terms">{terms}</div>'
+            f'<div class="jdq-gcols">{"".join(cols)}</div></div></details>')
 
 
 def render_overview(lines: list[str], quarter: str) -> str:
@@ -271,19 +332,11 @@ def render(text: str) -> str:
     sections = split_on(lines, "## ")
     top = lines[:next((i for i, l in enumerate(lines) if l.startswith("## ")), len(lines))]
 
-    mast, definition = [], ""
-    for p in paragraphs(top):
-        if p.startswith("# "):
-            continue
-        if p.startswith("*Data warning:"):
-            mast.append(f"<p>{inline(p)}</p>")   # in the text, never as a banner
-        elif p.startswith("*QoQ"):
-            definition = re.sub(r"^QoQ", "<strong>QoQ</strong>", inline(p.strip("*")))
-            definition = f'<p class="jdq-def">{definition}</p>'
-        else:
-            mast.append(f"<p>{inline(p)}</p>")
+    # A *Data warning: ...* line stays in the text, never as a banner.
+    mast = [f"<p>{inline(p)}</p>" for p in paragraphs(top) if not p.startswith("# ")]
 
-    body = []
+    scopes = {name: fs for name, sec in sections if name in PLATFORMS and (fs := scope_features(sec))}
+    body = [render_glossary(scopes, GLOSSARY_METRICS_QUARTERLY)] if scopes else []
     for name, sec in sections:
         if name == "High level overview":
             hl = split_on(sec, "### ")
@@ -298,7 +351,7 @@ def render(text: str) -> str:
     return (f"<style>\n{CSS}\n</style>\n"
             f'<div class="jdq"><div class="jdq-mast"><span class="jdq-eyebrow">'
             f'Product usage KPI · Quarterly</span><h2 class="jdq-title">{inline(title)}</h2>'
-            f'{"".join(mast)}</div>{definition}{"".join(body)}</div>\n')
+            f'{"".join(mast)}</div>{"".join(body)}</div>\n')
 
 
 def main():

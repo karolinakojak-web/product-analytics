@@ -39,8 +39,6 @@ The renderer reads the lines below exactly as they are: keep their shape.
 
 Hi Team, here is how our key product usage KPI, Jobs Done, performed in Q2 2026 across two platforms. Every change compares with Q1 2026.
 
-*QoQ (quarter over quarter): the change compared with the previous quarter, here Q2 2026 against Q1 2026.*
-
 ---
 
 ## High level overview
@@ -104,7 +102,8 @@ Top 3 companies by Jobs Done:
 
 - **Two highlight sections follow the overview**: *Which product domains grew the most?*
   and *Which product domains declined?* See *The highlights* below.
-- **Title, opening, QoQ definition line and the two dashboard lines are fixed.**
+- **Title, opening and the two dashboard lines are fixed.** QoQ needs no definition
+  line: the glossary the render adds above the overview defines it.
   Copy them, changing only the quarters. The dashboard lines are the monthly ones,
   character for character (see the monthly rules, *Close each company section*).
 - **A `*Data warning: ...*` line**, when the shared rules require one, goes right under

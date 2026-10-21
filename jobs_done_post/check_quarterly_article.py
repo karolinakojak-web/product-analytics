@@ -341,9 +341,8 @@ def main():
         failures.append(f"title must read '# Jobs Done - {q_label} Product Performance'")
     opening = (f"Hi Team, here is how our key product usage KPI, Jobs Done, performed in "
                f"{q_label} across two platforms. Every change compares with {prev_label}.")
-    definition = (f"*QoQ (quarter over quarter): the change compared with the previous quarter, "
-                  f"here {q_label} against {prev_label}.*")
-    for needle, what in [(opening, "standard opening"), (definition, "QoQ definition line")] + FIXED:
+    # QoQ is defined in the glossary the render adds, not in the article.
+    for needle, what in [(opening, "standard opening")] + FIXED:
         if needle not in text:
             failures.append(f"missing {what}")
     # MAU has its one overview section, just before Users Completing Jobs. Anywhere
