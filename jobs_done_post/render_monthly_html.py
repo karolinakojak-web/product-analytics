@@ -8,6 +8,8 @@ as embedded content. It uses the look of the quarterly block (render_quarterly_h
 tiles for the overview, then one section per platform with one card per feature
 paragraph. Every figure comes from the Markdown article, which check_article.py has
 already traced to the data: this script only lays it out and adds no figure of its own.
+Above the overview, it adds a folded glossary: the metrics, and what one Job Done is
+for each feature of the scope sentences (render_glossary in render_quarterly_html.py).
 
 It fails on an overview line it cannot read, so a layout change never drops a figure
 silently.
@@ -18,7 +20,9 @@ import re
 import sys
 from pathlib import Path
 
-from render_quarterly_html import CSS, PLATFORMS, Unreadable, chip, inline, paragraphs, split_on
+from jobs_done_common import GLOSSARY_METRICS
+from render_quarterly_html import (CSS, PLATFORMS, Unreadable, chip, inline, paragraphs,
+                                   render_glossary, scope_features, split_on)
 
 # The quarterly CSS, plus what the monthly layout adds: two chips per tile (MoM and YoY)
 # and the feature cards, emoji on the left, the paragraph on the right.
@@ -106,7 +110,8 @@ def render(text: str) -> str:
     top = lines[:next((i for i, l in enumerate(lines) if l.startswith("## ")), len(lines))]
     mast = [f"<p>{inline(p)}</p>" for p in paragraphs(top) if not p.startswith("# ")]
 
-    body = []
+    scopes = {name: fs for name, sec in sections if name in PLATFORMS and (fs := scope_features(sec))}
+    body = [render_glossary(scopes, GLOSSARY_METRICS)] if scopes else []
     for name, sec in sections:
         if name == "High level overview":
             body.append(render_overview(sec, month.group(1)))
