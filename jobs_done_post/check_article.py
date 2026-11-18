@@ -1,98 +1,111 @@
 #!/usr/bin/env python3
-"""Check a Jobs Done article against the data and the editorial rules.
+"""Check a monthly Jobs Done article against the data and the editorial rules.
 
-    python3 check_article.py articles/article_2026-08.md
+    python3 check_article.py data/drafts/article_2026-10.md
 
-Two families of checks:
+The article reports LumApps and Beekeeper combined: an overview, then five feature
+paragraphs. Checks:
 
-  NUMBERS  every figure in the article must trace back to the CSVs in data/.
-           A figure written with an explicit sign must carry the sign the data
-           has: the July 2026 issue stated Content at -0.5% MoM when it had in
-           fact grown +0.5%, which is the class of error this catches.
-
+  OVERVIEW the five KPI lines, to the digit, as prepare_data.py prints them: they are
+           the figures of the dashboard's Overview tab.
+  NUMBERS  every other figure must trace back to the CSVs in data/. A figure written
+           with an explicit sign must carry the sign the data has: the July 2026 issue
+           stated Content at -0.5% MoM when it had in fact grown +0.5%, which is the
+           class of error this catches.
   RULES    the editorial conventions recorded in jobs_done_post/writing-rules.md and
-           .claude/skills/monthly-jobs-done-article/references/writing-rules.md. Deterministic, so
-           they never depend on anyone remembering them.
-
+           .claude/skills/monthly-jobs-done-article/references/writing-rules.md.
   VOLUME   no daily volume alert left without a verdict, and a "*Data warning: ...*"
-           line when a data incident is on record for the period (prepare_data.py
-           and the "Data volume" section of jobs_done_common.py).
+           line when a data incident is on record for the period.
 
 Exit codes: 0 clean, 1 failures, 2 the article or its data could not be read.
 Warnings never fail the run; they ask a human to confirm a judgement the script
 cannot make on its own.
 """
 
-import csv
 import re
 import sys
 from pathlib import Path
 
-from jobs_done_common import (EMOJI, FRESH_HOURS, GO_LIVE, SCOPE, SCOPE_GROUP, YOY,
-                              check_numbers, check_volume, check_wording, num, pct, stale)
+import prepare_data
+from jobs_done_common import (EMOJI, FRESH_HOURS, GO_LIVE, SCOPE, SCOPE_GROUP, YOY, check_numbers,
+                              check_overview, check_volume, check_wording, dashboard_line,
+                              overview_lines, pct, stale)
+from prepare_data import adj_month, data_file, month_kpis, read_features, read_totals
 
-HERE = Path(__file__).resolve().parent
-DATA_DIR = HERE / "data"
-
-SCOPE_SENTENCE_FROM = "2026-09"   # first issue carrying the sentence
-
-READ = []   # data files the check read, for the freshness check
-
-
-def fail(msg):
-    print(f"  KO  {msg}")
-
-
-def adj(ym, d):
-    y, m = int(ym[:4]), int(ym[5:7]) + d
-    while m > 12: m -= 12; y += 1
-    while m < 1:  m += 12; y -= 1
-    return f"{y}-{m:02d}"
+FEATURES_SECTION = "## Features of the month"
+FEATURE_PARAGRAPHS = 5
+INTRO_LINK = "*Don't you know what \"Jobs Done\" metrics are?"
+OPENING = ("Hi Team, here is how our key product usage KPI, Jobs Done, performed in {month} "
+           "across LumApps and Beekeeper.")
+FEATURE_NAME = re.compile(r"\*\*([A-Z][\w &]*?)\*\*")
 
 
-def load(platform):
-    """Latest all/features CSV pair for a platform."""
-    def latest(pat):
-        f = sorted(DATA_DIR.glob(pat))
-        return f[-1] if f else None
-    a_path, f_path = latest(f"{platform}_all_*.csv"), latest(f"{platform}_features_*.csv")
-    if not a_path or not f_path:
-        sys.exit(f"[check_article] no data for {platform} in {DATA_DIR}. Run: python3 prepare_data.py")
-    READ.extend([a_path, f_path])
-    allr, feat = {}, {}
-    with open(a_path, encoding="utf-8") as fh:
-        for r in csv.DictReader(fh):
-            allr[r["Calendar Month"]] = r
-    with open(f_path, encoding="utf-8") as fh:
-        for r in csv.DictReader(fh):
-            feat.setdefault(r["Feature"], {})[r["Calendar Month"]] = r
-    return allr, feat
+def total_values(totals, month):
+    """Every figure the overview prose may quote: this month, and the two before it,
+    since an article legitimately contrasts this month's move with last month's."""
+    out = []
+    for back in (0, 1, 2):
+        m = adj_month(month, -back)
+        cur, prev = month_kpis(totals, m), month_kpis(totals, adj_month(m, -1))
+        if not cur:
+            continue
+        for k in ("jd", "users", "mau"):
+            out += [("M", cur[k] / 1e6), ("K", cur[k] / 1e3)]
+        out.append(("%", cur["reach"]))
+        if prev:
+            out += [("%", pct(cur[k], prev[k])) for k in ("jd", "users", "jpu", "mau")]
+    return [(u, v) for u, v in out if v is not None]
 
 
-def load_agents(platform):
-    """{agent: {month: row}} from the per-agent file, empty when there is none."""
-    f = sorted(DATA_DIR.glob(f"{platform}_agents_*.csv"))
-    if not f:
-        return {}
-    READ.append(f[-1])
-    out = {}
-    with open(f[-1], encoding="utf-8") as fh:
-        for r in csv.DictReader(fh):
-            out.setdefault(r["Agent"], {})[r["Calendar Month"]] = r
-    return out
+def feature_values(history, totals, group, name, month):
+    """Every figure a paragraph on this feature may quote."""
+    by_month = history.get((group, name), {})
+    cur = by_month.get(month)
+    if not cur:
+        return []
+    prev, before = by_month.get(adj_month(month, -1)), by_month.get(adj_month(month, -2))
+    out = [("M", cur["jd"] / 1e6), ("K", cur["jd"] / 1e3), ("K", cur["users"] / 1e3),
+           ("M", cur["users"] / 1e6)]
+    if cur["mau"]:
+        out.append(("%", cur["users_28d"] / cur["mau"] * 100))       # reach, 28-day users
+    group_jd = sum(m[month]["jd"] for (g, _), m in history.items() if g == group and m.get(month))
+    total = totals.get(month, {}).get("jd")
+    out += [("%", cur["jd"] / group_jd * 100)] if group_jd else []   # share of its group
+    out += [("%", cur["jd"] / total * 100)] if total else []         # share of all Jobs Done
+
+    def jpu(r):
+        return r["jd"] / r["users"] if r and r["users"] else None
+
+    for a, b in ((cur, prev), (prev, before)):     # this month's move, and last month's
+        if a and b:
+            out += [("%", pct(a["jd"], b["jd"])), ("%", pct(a["users"], b["users"]))]
+            if jpu(a) and jpu(b):
+                out.append(("%", pct(jpu(a), jpu(b))))
+    if prev:
+        change = cur["jd"] - prev["jd"]    # "up 714K Jobs Done"
+        out += [("M", prev["jd"] / 1e6), ("K", prev["jd"] / 1e3), ("K", prev["users"] / 1e3),
+                ("M", change / 1e6), ("K", change / 1e3)]
+    return [(u, v) for u, v in out if v is not None]
 
 
-def agent_values(agents, month):
+def agent_values(month):
     """Figures the Agents paragraph may quote about individual agents."""
+    path = data_file("agents", month)
+    if not path.exists():
+        return []
+    agents = {}
+    for r in prepare_data._read(path):
+        agents.setdefault(r["Agent"], {})[r["Calendar Month"][:7]] = r
     cur = {a: m[month] for a, m in agents.items() if m.get(month)}
+    num = prepare_data.num
     total = sum(num(r["Jobs Done"]) for r in cur.values())
     out = []
     for a, r in cur.items():
         jd, users = num(r["Jobs Done"]), num(r["Jobs Done Users"])
         out += [("K", jd / 1e3), ("K", users / 1e3)]
         if total:
-            out.append(("%", jd / total * 100))          # share of all agents
-        prev = agents[a].get(adj(month, -1))
+            out.append(("%", jd / total * 100))
+        prev = agents[a].get(adj_month(month, -1))
         if prev:
             out += [("%", pct(jd, num(prev["Jobs Done"]))),
                     ("%", pct(users, num(prev["Jobs Done Users"]))),
@@ -100,98 +113,42 @@ def agent_values(agents, month):
     return [(u, v) for u, v in out if v is not None]
 
 
-def platform_values(allr, month):
-    """Every figure the overview and platform intro may legitimately quote."""
-    cur, prev, yoy = allr.get(month), allr.get(adj(month, -1)), allr.get(adj(month, -12))
-    if not cur:
-        sys.exit(f"[check_article] month {month} missing from the data. Run: python3 prepare_data.py --fetch --month {month}")
-    out = []
-    out_freq = []
-    if prev and cur.get("Frequency"):
-        out_freq.append(("%", pct(num(cur["Frequency"]), num(prev["Frequency"]))))
-    for col, unit in (("Jobs Done", "M"), ("Jobs Done Users", "K"), ("MAU", "K")):
-        v = num(cur[col])
-        out += [(unit, v / (1e6 if unit == "M" else 1e3)), ("K", v / 1e3), ("M", v / 1e6)]
-        if prev:
-            out.append(("%", pct(v, num(prev[col]))))
-        if yoy:
-            out.append(("%", pct(v, num(yoy[col]))))
-    # Neighbouring months are fair game: an article legitimately says "stays below
-    # June's 35.8M", or contrasts this month's move with last month's.
-    for back in (1, 2):
-        m, before = adj(month, -back), adj(month, -back - 1)
-        if not allr.get(m):
-            continue
-        out += [("M", num(allr[m]["Jobs Done"]) / 1e6), ("K", num(allr[m]["MAU"]) / 1e3),
-                ("K", num(allr[m]["Jobs Done Users"]) / 1e3)]
-        if allr.get(before):
-            for col in ("Jobs Done", "Jobs Done Users", "MAU", "Frequency"):
-                out.append(("%", pct(num(allr[m][col]), num(allr[before][col]))))
-    return [(u, v) for u, v in out + out_freq if v is not None]
-
-
-def feature_values(feat, name, month, allr):
-    cur = feat.get(name, {}).get(month)
-    if not cur:
-        return None
-    prev, yoy = feat[name].get(adj(month, -1)), feat[name].get(adj(month, -12))
-    out = []
-    jd, users, freq, mau = (num(cur["Jobs Done"]), num(cur["Jobs Done Users"]),
-                            num(cur["Frequency"]), num(cur.get("MAU", 0)))
-    out += [("M", jd / 1e6), ("K", jd / 1e3), ("K", users / 1e3), ("M", users / 1e6)]
-    if mau:
-        out.append(("%", users / mau * 100))          # reach
-    before = feat[name].get(adj(month, -2))
-    for col, val in (("Jobs Done", jd), ("Jobs Done Users", users), ("Frequency", freq)):
-        if prev:
-            out.append(("%", pct(val, num(prev[col]))))
-            if before:   # last month's own move, e.g. "after July's -9.4%"
-                out.append(("%", pct(num(prev[col]), num(before[col]))))
-        if yoy:
-            out.append(("%", pct(val, num(yoy[col]))))
-    if prev:
-        out += [("M", num(prev["Jobs Done"]) / 1e6), ("K", num(prev["Jobs Done Users"]) / 1e3)]
-        # share of the platform's monthly change
-        pc, pp = allr.get(month), allr.get(adj(month, -1))
-        if pc and pp:
-            chg = num(pc["Jobs Done"]) - num(pp["Jobs Done"])
-            if chg:
-                out.append(("%", (jd - num(prev["Jobs Done"])) / chg * 100))
-    return [(u, v) for u, v in out if v is not None]
-
-
-def expected_scope(feat, month):
-    """{domain group: {features}} tracked in the report month."""
+def expected_scope(history, month):
+    """{domain group: [features, largest first]} tracked in the report month."""
     scope = {}
-    for name, months in feat.items():
-        row = months.get(month)
-        if row and num(row["Jobs Done"]) and GO_LIVE.get(name, month) <= month:
-            scope.setdefault(row["Product Domain Group"], set()).add(name)
-    return scope
+    for (group, name), by_month in history.items():
+        row = by_month.get(month)
+        if row and row["jd"] and GO_LIVE.get(name, month) <= month:
+            scope.setdefault(group, []).append((row["jd"], name))
+    return {g: [n for _, n in sorted(v, reverse=True)] for g, v in scope.items()}
 
 
-def check_scope(sec, feat, month, plat, failures):
+def check_scope(sec, want, month, failures):
     m = SCOPE.search(sec)
     if not m:
-        failures.append(f"{plat}: missing the scope sentence 'Jobs Done covers <Domain> (<Feature>, ...)'")
+        failures.append("features: open on the scope sentence 'Jobs Done covers <Domain> "
+                        "(<Feature>, ...)'")
         return
-    written = {d: {f.strip() for f in fs.split(",") if f.strip()}
+    written = {d: [f.strip() for f in fs.split(",") if f.strip()]
                for d, fs in SCOPE_GROUP.findall(m.group(1))}
-    want = expected_scope(feat, month)
     for d in sorted(want.keys() - written.keys()):
-        failures.append(f"{plat}: scope sentence misses the domain {d} ({', '.join(sorted(want[d]))})")
+        failures.append(f"scope sentence misses the domain {d} ({', '.join(want[d])})")
     for d in sorted(written.keys() - want.keys()):
-        failures.append(f"{plat}: scope sentence lists {d}, which is not tracked in {month}")
+        failures.append(f"scope sentence lists {d}, which is not tracked in {month}")
     for d in sorted(want.keys() & written.keys()):
-        for f in sorted(want[d] - written[d]):
-            failures.append(f"{plat}: scope sentence misses {f} under {d}")
-        for f in sorted(written[d] - want[d]):
-            failures.append(f"{plat}: scope sentence lists {f} under {d}, which is not tracked in {month}")
+        for f in sorted(set(want[d]) - set(written[d])):
+            failures.append(f"scope sentence misses {f} under {d}")
+        for f in sorted(set(written[d]) - set(want[d])):
+            failures.append(f"scope sentence lists {f} under {d}, which is not tracked in {month}")
+        listed = [f for f in written[d] if f in want[d]]
+        if listed != [f for f in want[d] if f in listed]:
+            failures.append(f"scope sentence: list the features of {d} from largest to "
+                            f"smallest: {', '.join(want[d])}")
 
 
 def main():
     if len(sys.argv) != 2:
-        sys.exit("usage: check_article.py articles/article_YYYY-MM.md")
+        sys.exit("usage: check_article.py data/drafts/article_YYYY-MM.md")
     path = Path(sys.argv[1])
     if not path.exists():
         sys.exit(f"[check_article] no such file: {path}")
@@ -200,79 +157,83 @@ def main():
         sys.exit(f"[check_article] filename must be article_YYYY-MM.md, got {path.name}")
     month = m.group(1)
     text = path.read_text(encoding="utf-8")
-
     failures, warnings = [], []
+
+    totals, history = read_totals(month), read_features(month)
+    cur, prev = month_kpis(totals, month), month_kpis(totals, adj_month(month, -1))
+    if not cur:
+        sys.exit(f"[check_article] {month} missing from the data. Run: python3 prepare_data.py "
+                 f"--month {month}")
+    month_name = prepare_data.date(int(month[:4]), int(month[5:]), 1).strftime("%B")
 
     # ---- structure -------------------------------------------------------
     if not re.search(r"^# Jobs Done - \w+ \d{4} Product Performance$", text, re.M):
         failures.append("title must read '# Jobs Done - <Month> <Year> Product Performance'")
-    for needle, what in (
-        ("Hi Team, here is how our key product usage KPI", "standard opening sentence"),
-        ("*Don't you know what \"Jobs Done\" metrics are?", "italicised intro link"),
-        ("*Full breakdown available in the [LumApps Jobs Done dashboard]", "italicised LumApps dashboard link"),
-        ("*Full breakdown available in the [Beekeeper Jobs Done dashboard]", "italicised Beekeeper dashboard link"),
-    ):
+    for needle, what in ((OPENING.format(month=month_name), "standard opening sentence"),
+                         (INTRO_LINK, "italicised intro link"),
+                         ("## High level overview", "overview heading"),
+                         (FEATURES_SECTION, f"'{FEATURES_SECTION}' section"),
+                         (dashboard_line("month"), "italicised dashboard line, copied as it is")):
         if needle not in text:
             failures.append(f"missing {what}")
 
     # ---- wording ---------------------------------------------------------
     check_wording(text, failures, warnings)
+    for hit in re.finditer(YOY, text, re.I):
+        failures.append(f"year-over-year: the dashboard shows none, so the article neither: "
+                        f"{hit.group(0)!r}")
 
-    # ---- sections --------------------------------------------------------
-    overview = text.split("## LumApps")[0]
-    body = text.split("## LumApps", 1)[1] if "## LumApps" in text else ""
-    sections = {}
-    if body:
-        la, _, bk = body.partition("## Beekeeper")
-        sections = {"lumapps": la, "beekeeper": bk}
+    # ---- overview --------------------------------------------------------
+    overview = text.split("## High level overview", 1)[-1].split(FEATURES_SECTION)[0]
+    check_overview(overview, overview_lines(cur, prev, "MoM"), failures)
+    prose = "\n".join(l for l in overview.splitlines() if not l.strip().startswith(("✅", "👥", "🔁", "📈", "🎯")))
+    check_numbers(prose, total_values(totals, month), "overview", failures)
 
-    for plat, sec in sections.items():
-        paras = [p for p in sec.split("\n\n")
+    # ---- features --------------------------------------------------------
+    sec = text.split(FEATURES_SECTION, 1)[1] if FEATURES_SECTION in text else ""
+    want = expected_scope(history, month)
+    group_of = {n: g for g, ns in want.items() for n in ns}
+    if sec:
+        check_scope(sec, want, month, failures)
+        paras = [p.strip() for p in sec.split("\n\n")
                  if re.match(r"^[^\w\s*]", p.strip()) and "**" in p]
-        if len(paras) > 3:
-            failures.append(f"{plat}: {len(paras)} feature paragraphs, 3 is the maximum")
-        for p in paras:
-            for hit in re.finditer(YOY, p, re.I):
-                failures.append(f"{plat}: year-over-year in a feature paragraph: {hit.group(0)!r}")
-            fm = re.search(r"\*\*([A-Z][\w &]*?)\*\*", p)
-            if fm and fm.group(1) in EMOJI and EMOJI[fm.group(1)] not in p:
-                failures.append(f"{plat}: {fm.group(1)} should use {EMOJI[fm.group(1)]}")
-
-    # ---- figures ---------------------------------------------------------
-    la_all, la_feat = load("lumapps")
-    bk_all, bk_feat = load("beekeeper")
-    la_agents = load_agents("lumapps")
-    check_numbers(overview, platform_values(la_all, month) + platform_values(bk_all, month),
-                  "overview", failures)
-    for plat, sec, (allr, feat) in (("lumapps", sections.get("lumapps", ""), (la_all, la_feat)),
-                                    ("beekeeper", sections.get("beekeeper", ""), (bk_all, bk_feat))):
-        if not sec:
-            continue
-        if month >= SCOPE_SENTENCE_FROM:
-            check_scope(sec, feat, month, plat, failures)
-        allowed = platform_values(allr, month)
+        if len(paras) != FEATURE_PARAGRAPHS:
+            failures.append(f"features: {len(paras)} feature paragraphs, write {FEATURE_PARAGRAPHS}")
+        # One or two sentences introduce the features, before the first of them.
+        before = sec.split(paras[0])[0] if paras else sec
+        intro = [p for p in before.split("\n\n") if p.strip() and not SCOPE.search(p)
+                 and not p.strip().startswith(("---", "*"))]
+        if not intro:
+            failures.append("features: introduce the features with one or two sentences, "
+                            "after the scope sentence and before the first feature")
         for p in sec.split("\n\n"):
-            fm = re.search(r"\*\*([A-Z][\w &]*?)\*\*", p)
-            vals = feature_values(feat, fm.group(1), month, allr) if fm else None
-            if fm and fm.group(1) == "Agents" and plat == "lumapps":
-                vals = (vals or []) + agent_values(la_agents, month)
-            check_numbers(p, allowed + (vals or []), f"{plat}/{fm.group(1) if fm else 'intro'}",
+            fm = FEATURE_NAME.search(p)
+            name = fm.group(1) if fm else None
+            if name and p.strip() in paras:
+                if name not in group_of:
+                    failures.append(f"features: {name} is not a feature tracked in {month}")
+                elif name in EMOJI and not p.strip().startswith(EMOJI[name]):
+                    failures.append(f"features: {name} should open on {EMOJI[name]}")
+            if name:
+                vals = feature_values(history, totals, group_of.get(name), name, month)
+            else:   # the introduction tells the month's story: any feature may be quoted
+                vals = [v for n, g in group_of.items()
+                        for v in feature_values(history, totals, g, n, month)]
+            if name == "Agents":
+                vals += agent_values(month)
+            check_numbers(p, total_values(totals, month) + vals, f"features/{name or 'intro'}",
                           failures)
 
     # ---- data volume -----------------------------------------------------
     # A broken pipeline leaves the figures traceable but wrong.
-    import prepare_data
     check_volume(prepare_data.volume_alerts(month), text, failures)
-    for plat in ("lumapps", "beekeeper"):
-        vol = DATA_DIR / f"{plat}_daily_volume_{month}.csv"
-        if vol.exists():
-            READ.append(vol)
-        else:
-            failures.append(f"no daily volume on file for {plat}: re-run python3 prepare_data.py "
-                            f"--month {month}")
+    read = [data_file(k, month) for k in ("totals", "features", "daily_volume")]
+    for p in read:
+        if not p.exists():
+            failures.append(f"no {p.name} on file: re-run python3 prepare_data.py --month {month}")
 
     # ---- freshness -------------------------------------------------------
-    for p, hours in stale(READ):
+    for p, hours in stale([p for p in read if p.exists()]):
         failures.append(f"data is {hours:.0f}h old ({p.name}): an article is checked on data "
                         f"fetched within {FRESH_HOURS}h. Re-run python3 prepare_data.py")
 
@@ -281,10 +242,10 @@ def main():
     for w in warnings:
         print(f"  !   {w}")
     for f in failures:
-        fail(f)
+        print(f"  KO  {f}")
     if failures:
         print(f"\n  {len(failures)} failure(s). Fix the article, or the data is stale: "
-              f"python3 prepare_data.py")
+              f"python3 prepare_data.py --month {month}")
         return 1
     print(f"  OK  no failures ({len(warnings)} warning(s))")
     return 0

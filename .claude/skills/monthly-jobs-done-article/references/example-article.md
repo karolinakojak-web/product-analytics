@@ -1,18 +1,16 @@
-# Example article (August 2026, figures removed)
+# Example article (shape only, figures removed)
 
-The August 2026 article, kept for structure and voice. Every figure is replaced by a
-placeholder (`XXX.XM`, `XXX.XK`, `+X.X%`), so the text says nothing about real usage. It
-names no customer. Never take a figure or a trend from it: the data comes from the script
-output only.
-
-It follows the current rules except one: it predates the scope sentence, so neither
-platform section opens on it. Add it, as `writing-rules.md` describes.
+The shape of a monthly article on the consolidated data, kept for structure. Every
+figure is replaced by a placeholder (`XXX.XM`, `XXX.XK`, `+X.X%`), so the text says
+nothing about real usage. It names no customer. Never take a figure or a trend from it:
+the data comes from the script output only. For the voice, the shared writing rules
+apply: plain, direct sentences, one idea at a time.
 
 ---
 
-# Jobs Done - August 2026 Product Performance
+# Jobs Done - October 2026 Product Performance
 
-Hi Team, here is how our key product usage KPI, Jobs Done, performed in August across two platforms.
+Hi Team, here is how our key product usage KPI, Jobs Done, performed in October across LumApps and Beekeeper.
 
 *Don't you know what "Jobs Done" metrics are? [Read this introduction](https://we.lumapps.com/we/ls/space/5070108616032256/team-engineering/article/ddf2b3ba-e590-4806-ac0a-00669376237c)*
 
@@ -20,36 +18,30 @@ Hi Team, here is how our key product usage KPI, Jobs Done, performed in August a
 
 ## High level overview
 
-✅️ Jobs Done
+✅ Jobs Done: XXX.XM (-X.X% MoM)
+👥 Users with a Job Done: X.XXM (+X.X% MoM)
+🔁 Jobs per User: XX.X (-X.X% MoM)
+📈 MAU: X.XXM (+X.X% MoM)
+🎯 Reach: XX.X% (-X.X pts MoM)
 
-- LumApps XXX.XM (-X.X% MoM, +XX.X% YoY)
-- Beekeeper XX.XM (+X.X% MoM, +X.X% YoY)
-
-👨‍🦲 MAU
-
-- LumApps X.XXM (-X.X% MoM)
-- Beekeeper XXX.XK (+X.X% MoM)
+Jobs Done held steady in October (-X.X% MoM), after a +XX.X% rise in September. More people completed a job (+X.X% Users with a Job Done), but each of them completed fewer: Jobs per User fell -X.X%.
 
 ---
 
-## LumApps
+## Features of the month
 
-August was quieter, as summer months usually are. Compared to last August, Jobs Done is up **+XX.X%**.
+Jobs Done covers Communication & Collaboration (Content, Streams, Chats, Spaces, Reactions, Posts, Comments, Documents, Videos, Company Events), Work & Automation (Shortcuts, Shifts, Workflows, Forms, Tasks), Channels (Campaigns) and People & Growth (Surveys, Referrals).
 
-📄 **Content** explains almost all of the drop: XXX.XM Jobs Done, down -X.X% MoM. Users fell less than volume (-X.X% against -X.X%), so people kept coming, they just came less often. That is the usual summer pattern.
+October held the level September reached. Content lost X.XXM Jobs Done (-X.X% MoM) and carried the small drop of the total. Ten other features grew, led by Spaces (+XXX.XK Jobs Done) and Posts (+XXX.XK), while Shortcuts and Campaigns grew for a third month in a row.
 
-👍 **Reactions** fell to X.XM (-XX.X% MoM), a second month down after the June peak. This feature moves a lot from one month to the next, so two declines are not a trend yet.
+📄 **Content** reached XXX.XM Jobs Done (-X.X% MoM), X.XXM fewer than in September. More people opened content (+X.X% Users with a Job Done, to X.XXM), but each one opened fewer (-X.X% Jobs per User): the drop comes from how often people came back.
 
-*Full breakdown available in the [LumApps Jobs Done dashboard](https://bi.lumapps.com/dashboards/base::jobs_done?tab_name=Jobs+Done&Time+Frame=13+month+ago+for+13+month&Product+Domain+Group=Communication+%26+Collaboration).*
+🏠 **Spaces** grew +XX.X% MoM to X.XXM Jobs Done, a second month up in a row. Users with a Job Done rose +X.X% and Jobs per User +XX.X%: people who open spaces opened more of them.
 
----
+📝 **Posts** grew +XX.X% MoM to X.XXM Jobs Done, also a second month up in a row. Both the number of people (+XX.X% Users with a Job Done, to XXX.XK) and how often each of them opened a post (+XX.X% Jobs per User) grew.
 
-## Beekeeper
+🔗 **Shortcuts** grew +X.X% MoM to X.XXM Jobs Done, a third month up in a row. The growth came from more people (+X.X% Users with a Job Done), with Jobs per User almost unchanged (+X.X%).
 
-Beekeeper moved the opposite way in August: more people completed a job (+X.X% Users Completing Jobs) and each of them did more (+X.X% frequency).
+📢 **Campaigns** grew +XX.X% MoM to XXX.XK Jobs Done, a third month up in a row. Users with a Job Done jumped +XX.X% to XXX.XK while Jobs per User fell -XX.X%: many more people opened a campaign, each one opening fewer.
 
-📡 **Streams** drove about XX% of that growth: XX.XM Jobs Done (+X.X% MoM), with Users Completing Jobs up +X.X% and frequency up +X.X%. It is the largest of the Beekeeper features we track, and **XX.X% of active users** completed a Streams job this month.
-
-💬 **Chats** grew +X.X% MoM to X.XM Jobs Done, with Users Completing Jobs back up to XXX.XK after July's dip. XX.X% of active users completed a Chats job this month.
-
-*Full breakdown available in the [Beekeeper Jobs Done dashboard](https://bi.lumapps.com/dashboards/product_bi::jobs_done?tab_name=Jobs+Done&Tenant+Selection=commercial%5E_all&Tenant+Subdomain=&Company+Size=&Industry=&+Commercial+Phase=&Commercial+Swarm=&Is+CS+Ops+Managed+%28Yes+%2F+No%29=&Time+Frame=13+month+ago+for+13+month&Product+Domain+Group=Communication+%26+Collaboration).*
+*Full breakdown available in the [Jobs Done dashboard](https://bi.lumapps.com/dashboards/product_bi::platform_jobs_done?tab_name=Overview&Overview+Time+Frame=1+month+ago+for+1+month).*
