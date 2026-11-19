@@ -17,10 +17,11 @@ quarterly one. The article is written as a Markdown draft in `data/drafts/` (git
 and only its HTML rendering in `articles/` is the deliverable. A **Claude Code hook runs
 the right check on every save** of `data/drafts/article_*.md` or
 `data/drafts/quarterly_*.md`, configured in `.claude/settings.json` at the repo root.
-What follows describes the monthly check; the quarterly one adds the shape of the article (two highlight lists, one block per domain group, one line per
-feature in size order, the group's biggest movers by company as the script prints them). Once a check passes, the
-hook renders the article as HTML: `render_monthly_html.py` for a monthly one,
-`render_quarterly_html.py` for a quarterly one. Nothing to remember and nothing to
+What follows describes the monthly check; the quarterly one adds the shape of the
+article (two highlight lists, one block per domain group, one line per feature in size
+order, the group's biggest movers by company as the script prints them). Once a check
+passes, the hook renders the article as HTML: `render_monthly_html.py` for a monthly
+one, `render_quarterly_html.py` for a quarterly one. Nothing to remember and nothing to
 launch: write the article, the check runs, failures come back as an error. It can also
 be run by hand:
 

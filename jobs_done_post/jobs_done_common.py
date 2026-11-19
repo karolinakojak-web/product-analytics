@@ -108,12 +108,18 @@ def run_query(sdk, dims: list[str], measures: list[str],
     # A heavy query can hit a 502 or 504 on its way through ClickHouse: retry twice.
     for attempt in range(3):
         try:
-            return json.loads(sdk.run_inline_query(result_format="json", body=query))
+            rows = json.loads(sdk.run_inline_query(result_format="json", body=query))
         except Exception as e:  # looker_sdk.error.SDKError
             if attempt == 2 or not re.search(r"\b50[234]\b", str(e)):
                 raise
             print(f"[looker] server error, retrying in {30 * (attempt + 1)}s", file=sys.stderr)
             time.sleep(30 * (attempt + 1))
+            continue
+        # Looker cuts the result at the limit without an error: the data would be incomplete.
+        if len(rows) >= int(limit):
+            sys.exit(f"Error: a query on {', '.join(dims)} returned {len(rows)} rows, its "
+                     f"limit. Raise the limit in the caller, then re-run.")
+        return rows
 
 
 def run_features(sdk, period_dim: str, measures: list[str], filters: dict,
@@ -486,15 +492,6 @@ VOLUME_REVIEWS = {
     ("production-de", "2026-05-01"): ("expected", "Labour Day, 1 May"),
     ("production-de", "2026-05-14"): ("expected", "Ascension Day"),
     ("production-de", "2026-05-25"): ("expected", "Whit Monday"),
-    # fct_jobs_done_1d overwritten with partial days since dataplatform PR #1503
-    # (merged 22 September 2026), on the old LumApps source. Repaired upstream: the
-    # fetch of 19 October 2026 no longer showed these days. Kept for the record.
-    ("prod-ms-cell-001", "2026-09-20"): ("incident", "partial days after dataplatform PR #1503"),
-    ("prod-go-cell-600", "2026-09-21"): ("incident", "partial days after dataplatform PR #1503"),
-    ("prod-go-cell-001", "2026-09-26"): ("incident", "partial days after dataplatform PR #1503"),
-    ("prod-go-cell-002", "2026-09-26"): ("incident", "partial days after dataplatform PR #1503"),
-    ("prod-go-cell-003", "2026-09-26"): ("incident", "partial days after dataplatform PR #1503"),
-    ("prod-go-cell-005", "2026-09-26"): ("incident", "partial days after dataplatform PR #1503"),
 }
 
 

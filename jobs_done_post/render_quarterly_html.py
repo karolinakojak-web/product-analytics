@@ -61,7 +61,6 @@ JD_CSS = """\
 /* each card spans four rows of the grid (label, value, change, subtitle), shared by the
    cards of a row, so a label on two lines keeps every value on one line */
 .lwa .jd-kpis > div{padding:14px; grid-row:span 4; grid-template-rows:subgrid; row-gap:2px; align-content:start}
-.lwa .lwa-cards > div > span.jd-v{font-size:26px}
 @container (max-width:900px){
   .lwa .jd-kpis{grid-template-columns:repeat(6,minmax(0,1fr))}
   .lwa .jd-kpis > div{grid-column:span 2}
