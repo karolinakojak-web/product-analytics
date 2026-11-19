@@ -1,7 +1,9 @@
 # Jobs Done articles: shared writing rules
 
-These rules apply to every Jobs Done article, monthly and quarterly. Each skill adds its
-own rules on structure and selection:
+These rules apply to every Jobs Done article, monthly and quarterly. Both report
+LumApps and Beekeeper **combined**, as the consolidated dashboard does: no figure of one
+platform alone, and no share of one platform. Each skill adds its own rules on structure
+and selection:
 
 - `.claude/skills/monthly-jobs-done-article/references/writing-rules.md`
 - `.claude/skills/quarterly-jobs-done-article/references/writing-rules.md`
@@ -20,15 +22,20 @@ The constants they rely on (emoji per feature, go-live months, banned wording) l
   happened, not what it signifies.
 - **Never let analytical vocabulary reach the prose.** The script's wording is for
   reading the data, not for the article. "Content accounts for almost the entire monthly
-  move" is the contribution metric leaking in; write "Content explains almost all of the
-  drop". Same for "swing", "driver", "penetration", "reach".
+  move" is analyst phrasing leaking in; write "Content explains almost all of the
+  drop". Same for "swing", "driver", "penetration". "Reach" is fine as the name of the
+  dashboard's KPI, never as a verb or a vague claim. For a single feature, say what it
+  divides by: "Streams reached 81.8% of the MAU of the organizations that have it".
+  A feature's Reach divides by the MAU of the organizations that have the feature, not
+  by the platform's MAU of the overview: never write "81.8% of MAU" for a feature, and
+  never "active users" (the check fails on it).
 - No figurative phrasing ("gave back the summer spike"), no sentence fragments
   ("Still the platform's backbone").
-- **Name the metric a percentage belongs to.** MAU and Users Completing Jobs are different
-  numbers and move differently: in August 2026, MAU was +1.4% and UCJ +1.9%. Writing
-  "more people active (+1.9%)" puts a MAU label on a UCJ figure and reads as a
-  contradiction of the overview. Say "Users Completing Jobs", "active user base" or
-  "frequency" explicitly, every time.
+- **Name the metric a percentage belongs to, with the dashboard's names**: Jobs Done,
+  Users with a Job Done, Jobs per User, MAU, Reach. MAU and Users with a Job Done are
+  different numbers and move differently: in October 2026, MAU was +2.3% and Users with
+  a Job Done +1.8%. Writing "more people active (+1.8%)" puts a MAU label on a users
+  figure and reads as a contradiction of the overview. Name the metric every time.
 - No corporate filler. No "it is worth noting". No "one could argue".
 - **No em dashes (—).** Rewrite the sentence rather than swapping the character for an
   en dash or a double hyphen: a comma, a colon, parentheses, or two shorter sentences
@@ -42,14 +49,14 @@ exist. Every figure is a statement about Jobs Done, never about the platform. Sa
 
 | Do not write | Write |
 |---|---|
-| "Beekeeper's biggest feature" | "the largest of the Beekeeper features we track" |
-| "used by 82.5% of active users" | "82.5% of active users completed a Streams job this month" |
+| "our biggest feature" | "the largest of the features we track" |
+| "used by 81.8% of active users" | "Streams reached 81.8% of the MAU of the organizations that have it" |
 | "the only feature to grow" | "the only one of the tracked features to grow" |
 
 The arithmetic behind those phrasings is right; the scope the words imply is not.
 "used by" suggests general usage of the feature, which the metric does not measure. The
-same caution applies to any comparative or coverage claim, and to the UCJ/MAU thresholds
-below: they describe adoption of a tracked action, not of a feature.
+same caution applies to any comparative or coverage claim, and to Reach: it describes
+adoption of a tracked action, not of a feature.
 
 ## Trend language rules
 - Do not use "recovered" or "bounced back" based on a single positive MoM. Check 3+ months of context. A feature is only recovering if it is returning toward a prior reference level, not just up from a recent dip.
@@ -65,31 +72,35 @@ below: they describe adoption of a tracked action, not of a feature.
   figure itself does not already say. Give the number and the direction, and stop there.
   Describing a feature's current size is fine as a statement about now rather than a
   ranking of months, but keep it inside the metric: "the largest of the features we
-  track", not "Beekeeper's biggest feature".
+  track", not "our biggest feature".
 
 ## Emojis for features
 
 This list is authoritative — use it even if an older article used a different glyph.
 📄 Content · 💬 Chats · 📡 Streams · 🏠 Spaces · 📝 Posts · 🎬 Videos · 👍 Reactions · 📊 Surveys · ☑️ Tasks · 📅 Shifts · 🗂️ Forms · 🔗 Shortcuts · 📢 Campaigns · 📆 Company Events · ⚙️ Workflows · 🗨️ Comments · 📁 Documents · 🤝 Referrals · 🤖 Agents · 🔍 Search
 
-## Scope sentence (opens each platform section)
+## Scope sentence
 
-Each `## LumApps` and `## Beekeeper` section starts with one sentence listing the product
-domain groups Jobs Done covers, each with its features, before any commentary:
+Each article holds one sentence listing the product domain groups Jobs Done covers, both
+platforms together, each with its features, before any commentary on them. The monthly
+article opens its *Features of the month* section on it, the quarterly article its
+*By tribe* section:
 
 ```
-Jobs Done covers Communication & Collaboration (Content, Posts, Comments, Reactions, Spaces, Videos) and AI & Search (Search, Agents).
-
-Jobs Done covers Communication & Collaboration (Streams, Chats, Comments, Reactions, Documents, Company Events), Work & Automation (Tasks, Forms, Shifts, Shortcuts, Workflows), People & Growth (Surveys, Referrals) and Channels (Campaigns).
+Jobs Done covers Communication & Collaboration (Content, Streams, Chats, Spaces, Reactions, Posts, Comments, Documents, Videos, Company Events), Work & Automation (Shortcuts, Shifts, Workflows, Forms, Tasks), Channels (Campaigns) and People & Growth (Surveys, Referrals).
 ```
+
+The HTML render shows it at the end of the article, as a small list above the dashboard
+line: it is the same in every report.
 
 ⚠️ **Check the scope every issue, do not copy the last one's sentence.** The scope is
-growing: AI & Search joined LumApps in September 2026 and another domain is on the way.
-Rebuild both sentences from the domain groups and features in the script output. Within a
-domain, list the features from largest to smallest by Jobs Done. A feature listed in
-`GO_LIVE` in `jobs_done_post/jobs_done_common.py` (currently Agents and Search, from September 2026) stays out until
-its go-live month (for a quarter: until the quarter that contains it), even though its
-backfilled data already shows up.
+growing: AI & Search (Search, Agents, Ask AI) is still being migrated to the consolidated
+explore and will show up once it has data. Rebuild the sentence from the domain groups
+and features in the script output. Within a domain, list the features from largest to
+smallest by Jobs Done. A feature listed in `GO_LIVE` in
+`jobs_done_post/jobs_done_common.py` (currently Agents and Search, from September 2026)
+stays out until its go-live month (for a quarter: until the quarter that contains it),
+even though its backfilled data already shows up.
 
 ## Go-live dates
 
@@ -105,9 +116,9 @@ When `VOLUME_REVIEWS` holds an `incident` verdict for the period the article cov
 the article opens, right under the title, on one italic line:
 
 ```
-*Data warning: LumApps figures for the end of September are incomplete because of a data pipeline incident. A corrected version will follow once the data is repaired.*
+*Data warning: figures for the end of September are incomplete because of a data pipeline incident. A corrected version will follow once the data is repaired.*
 ```
 
-Say which platform and which days, in plain words, and that a correction will follow.
+Say which days are affected, in plain words, and that a correction will follow.
 Do not explain the cause or quote the incident's figures. The check fails without the
 line.

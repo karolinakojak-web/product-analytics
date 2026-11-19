@@ -1,0 +1,79 @@
+/* LumApps brand shell of an artifact page. Every selector starts with .lwa: the block owns its styles, and a CMS stylesheet must not change it. */
+.lwa{display:block; margin:0; padding:0; border:0; text-align:left; font-size:16px}
+.lwa :where(h1,h2,h3,h4,p,ul,ol,li,blockquote,table,tr,td,th,header,section,div,span,a,b,strong,em,pre,code){color:inherit; font-family:inherit; font-style:normal; letter-spacing:normal; text-transform:none; text-shadow:none}
+.lwa :where(header,section,div){background:none; border:0; box-shadow:none; margin:0}
+.lwa{
+  --yellow:#FFE94D; --dark:#2E2E2E; --cream:#FDF6DC; --cream-2:#FBEFC4; --cream-3:#FEFAEC;
+  --white:#FFFFFF; --line:#E2DBD7;
+  --green:#C6E86B; --blue:#8DD8F5; --purple:#C9AEF5; --pink:#F5A9BC;
+  --ink:#2E2E2E; --ink-soft:#5A5350;
+}
+.lwa, .lwa *{box-sizing:border-box}
+.lwa{background:var(--white); color:var(--ink); font:16px/1.55 Roboto,"Helvetica Neue",Arial,sans-serif; border-radius:16px; overflow:hidden}
+.lwa em{font-style:italic}
+.lwa strong, .lwa b{font-weight:700}
+.lwa a{color:inherit; text-decoration:underline; text-decoration-thickness:2px; text-decoration-color:var(--yellow)}
+.lwa code{font:13px/1.4 "SFMono-Regular",Menlo,Consolas,monospace; background:var(--cream-2); padding:.1em .35em; border-radius:4px}
+.lwa pre{margin:0 0 14px; padding:14px 16px; background:var(--dark); color:#FFFFFF; border-radius:12px; overflow:auto}
+.lwa pre code{background:none; padding:0; color:inherit}
+.lwa figure{margin:0 0 16px; padding:0; border:0}
+.lwa video{display:block; width:100%; max-width:960px; height:auto; max-height:70vh; background:var(--dark); border-radius:12px}
+.lwa figcaption{margin-top:6px; font-size:14px; color:var(--ink-soft)}
+
+.lwa .lwa-wrap{max-width:1180px; margin:0 auto; padding:0 24px}
+.lwa .lwa-hero{padding:40px 0 20px; background:var(--dark); color:#FFFFFF}
+.lwa .lwa-eyebrow{font-size:12px; font-weight:900; letter-spacing:.1em; text-transform:uppercase; color:var(--yellow)}
+.lwa .lwa-hero h1{font-size:36px; font-weight:900; line-height:1.15; margin:8px 0 12px}
+.lwa .lwa-body{padding:24px 0 32px}
+
+.lwa .lwa-body > *{margin-top:0}
+.lwa h2{font-size:26px; font-weight:900; line-height:1.2; margin:28px 0 10px}
+.lwa h3{font-size:19px; font-weight:900; line-height:1.25; margin:20px 0 8px}
+.lwa h4{font-size:16px; font-weight:900; margin:16px 0 6px}
+.lwa p{margin:0 0 12px}
+.lwa ul, .lwa ol{margin:0 0 14px; padding-left:22px}
+.lwa ul > li{list-style:disc outside}
+.lwa ol > li{list-style:decimal outside}
+.lwa li{margin:4px 0}
+.lwa hr{border:0; height:4px; border-radius:2px; background:var(--dark); opacity:.12; margin:24px 0}
+
+/* The LumApps HTML widget styles every th and td (grey background, borders on all sides) with stronger selectors: the table rules use !important. */
+.lwa table{width:100% !important; border-collapse:separate !important; border-spacing:0 !important; margin:0 0 16px !important; background:var(--white) !important; border:1px solid var(--line) !important; border-radius:12px; overflow:hidden}
+.lwa th, .lwa td{padding:10px 14px !important; text-align:left; vertical-align:top; background:transparent !important; border:0 !important; border-bottom:1px solid var(--line) !important; color:var(--ink) !important}
+.lwa tr:last-child > td{border-bottom:0 !important}
+.lwa th, .lwa tr:first-child > td > strong:only-child{font-weight:900}
+.lwa th{background:var(--cream-2) !important}
+
+/* A callout: a blockquote, or a .lwa-callout with one of the colour modifiers. */
+.lwa blockquote, .lwa .lwa-callout{margin:0 0 14px; background:var(--cream-3); border-left:6px solid var(--blue); border-radius:10px; padding:12px 16px}
+.lwa blockquote > :last-child, .lwa .lwa-callout > :last-child{margin-bottom:0}
+.lwa .lwa-callout--done{border-left-color:var(--green)}
+.lwa .lwa-callout--warning{border-left-color:var(--yellow)}
+.lwa .lwa-callout--risk{border-left-color:var(--pink)}
+
+/* Cards: a .lwa-cards grid; each child is a card with a <b> title and text. Set --c for the top border colour. */
+.lwa .lwa-cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px; margin:0 0 16px}
+.lwa .lwa-cards > div{background:var(--cream-3); border:1px solid var(--line); border-radius:12px; padding:16px 18px; border-top:6px solid var(--c, var(--yellow))}
+.lwa .lwa-cards > div > b{display:block; margin-bottom:4px}
+.lwa .lwa-cards > div > span{display:block; font-size:14.5px; color:var(--ink-soft)}
+
+/* Steps: a .lwa-steps list; each child has a .lwa-n number and a <div> with a <b> title and text. */
+.lwa .lwa-steps{display:grid; gap:12px; margin:0 0 16px}
+.lwa .lwa-steps > div{display:grid; grid-template-columns:44px 1fr; gap:14px; align-items:start; background:var(--cream-3); border:1px solid var(--line); border-radius:12px; padding:14px 16px}
+.lwa .lwa-steps .lwa-n{width:44px; height:44px; border-radius:50%; background:var(--yellow); display:flex; align-items:center; justify-content:center; font-weight:900; font-size:18px}
+.lwa .lwa-steps > div > div > b{display:block; margin-bottom:2px}
+
+/* A status tag. */
+.lwa .lwa-tag{display:inline-block; background:var(--cream-2); border-radius:999px; padding:2px 10px; font-size:12.5px; font-weight:700; vertical-align:1px}
+.lwa .lwa-tag--done{background:var(--green)}
+.lwa .lwa-tag--progress{background:var(--blue)}
+.lwa .lwa-tag--todo{background:var(--yellow)}
+.lwa .lwa-tag--blocked{background:var(--pink)}
+
+.lwa .pc-data{display:none !important}
+
+@media (max-width:720px){
+  .lwa .lwa-wrap{padding:0 16px}
+  .lwa .lwa-hero h1{font-size:28px}
+  .lwa table{display:block; overflow-x:auto}
+}

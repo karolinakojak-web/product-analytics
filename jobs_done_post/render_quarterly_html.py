@@ -1,135 +1,152 @@
 #!/usr/bin/env python3
 """Render a checked quarterly Jobs Done article as the HTML block for the intranet.
 
-    python3 render_quarterly_html.py articles/quarterly_2026-Q3.md
+    python3 render_quarterly_html.py data/drafts/quarterly_2026-Q3.md [--out-dir DIR]
 
-Writes articles/quarterly_2026-Q3.html next to it: one <style> and one <div>, to paste
-as embedded content. Every figure comes from the Markdown article, which
-check_quarterly_article.py has already traced to the data: this script only lays it
-out (tiles for the overview, one card per domain group with its features and its top
-3 companies). It adds no figure of its own, except the bar widths, drawn from the
-shares the article prints. Above the overview, it adds a folded glossary: the metrics,
-and what one Job Done is for each feature of the scope sentences.
+Writes articles/quarterly_2026-Q3.html (the deliverable) from the checked Markdown draft:
+one <section class="lwa"> holding its
+own <style>, to paste as an HTML widget. It uses the LumApps brand shell of the artifact
+pages (assets/shell.css: dark header, LumApps yellow, cream cards, Roboto), so the
+articles look like every other page Claude publishes on the intranet.
+
+Every figure comes from the Markdown article, which check_quarterly_article.py has
+already traced to the data: this script only lays it out (cards for the overview, one
+block per domain group with its features and its biggest movers by company). It adds no figure of
+its own, except the bar widths, drawn from the shares the article prints. Above the
+overview, it adds a folded glossary: the metrics, and what one Job Done is for each
+feature of the scope sentence.
 
 It fails on a line it cannot read, so a layout change never drops content silently.
+The monthly render (render_monthly_html.py) shares the helpers below.
 """
 
+import argparse
 import html
 import re
 import sys
 from pathlib import Path
 
 from jobs_done_common import (EMOJI, FEATURE_DEFINITIONS, GLOSSARY_METRICS_QUARTERLY, SCOPE,
-                              SCOPE_GROUP)
+                              SCOPE_GROUP, overview_lines, KPI_EMOJI)
 
-CSS = """\
-.jdq { --jdq-bg: #f6f7f9; --jdq-surface: #ffffff; --jdq-ink: #18202b; --jdq-muted: #5b6676;
-  --jdq-line: #dfe3ea; --jdq-lum: #2f5bd3; --jdq-bee: #c27a0e; --jdq-up: #1f8a4c; --jdq-up-bg: #e3f4ea;
-  --jdq-down: #c2412d; --jdq-down-bg: #fbe7e3; --jdq-flat: #5b6676; --jdq-flat-bg: #eceff3;
-  --jdq-track: #dbe3f7; --jdq-num: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  background: var(--jdq-bg); color: var(--jdq-ink); border-radius: 12px; padding: 20px;
-  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  display: grid; gap: 28px; text-align: left;
-  max-width: 1080px; margin-inline: auto; padding-inline: 20px; }  /* centred column, as in the published pages */
-.jdq, .jdq * { box-sizing: border-box; }
-.jdq p, .jdq ol, .jdq ul, .jdq h2 { margin: 0; padding: 0; }
-.jdq .jdq-mast { display: grid; gap: 8px; }
-.jdq .jdq-eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--jdq-muted); }
-.jdq .jdq-title { font-size: 30px; line-height: 1.2; font-weight: 700; }
-.jdq .jdq-h2 { font-size: 24px; line-height: 1.25; font-weight: 700; }
-.jdq .jdq-overview { display: grid; gap: 16px; }
-.jdq .jdq-klabel { font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--jdq-muted); margin-bottom: 8px; }
-.jdq .jdq-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.jdq .jdq-tile { background: var(--jdq-surface); border: 1px solid var(--jdq-line); border-top: 3px solid var(--jdq-lum);
-  border-radius: 10px; padding: 12px 14px; display: grid; grid-template-columns: 1fr auto; row-gap: 2px; }
-.jdq .jdq-tile.jdq-beekeeper { border-top-color: var(--jdq-bee); }
-.jdq .jdq-tl { font-weight: 600; }
-.jdq .jdq-tv { font-size: 28px; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; }
-.jdq .jdq-tc { grid-column: 2; grid-row: 1 / 3; align-self: center; }
-.jdq .jdq-tu { grid-column: 1 / -1; color: var(--jdq-muted); font-size: 12.5px; }
-.jdq .jdq-hl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.jdq .jdq-hlbox { background: var(--jdq-surface); border: 1px solid var(--jdq-line); border-radius: 10px; padding: 12px 16px; display: grid; gap: 6px; }
-.jdq .jdq-hlbox ul { padding-left: 18px; display: grid; gap: 6px; }
-.jdq .jdq-h3 { font-size: 17px; font-weight: 700; }
-.jdq .jdq-chg { font: 500 12.5px/1 var(--jdq-num); padding: 2px 6px; border-radius: 5px; white-space: nowrap; }
-.jdq .jdq-chg.jdq-up { color: var(--jdq-up); background: var(--jdq-up-bg); }
-.jdq .jdq-chg.jdq-down { color: var(--jdq-down); background: var(--jdq-down-bg); }
-.jdq .jdq-chg.jdq-flat { color: var(--jdq-flat); background: var(--jdq-flat-bg); }
-.jdq .jdq-platform { display: grid; gap: 14px; }
-.jdq .jdq-phead { display: grid; gap: 8px; border-left: 4px solid var(--jdq-lum); padding-left: 14px; }
-.jdq .jdq-beekeeper .jdq-phead { border-left-color: var(--jdq-bee); }
-.jdq .jdq-scope { color: var(--jdq-muted); font-size: 14px; }
-.jdq .jdq-dom { background: var(--jdq-surface); border: 1px solid var(--jdq-line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 10px; }
-.jdq .jdq-dhead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
-.jdq .jdq-dname { font-size: 18px; font-weight: 700; }
-.jdq .jdq-gshare { margin-left: auto; color: var(--jdq-muted); font-size: 12.5px; }
-.jdq .jdq-big { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; font-size: 14px; }
-.jdq .jdq-bigv { font-size: 26px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
-.jdq .jdq-muted { color: var(--jdq-muted); font-size: 12.5px; }
-.jdq .jdq-cols { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 28px; align-items: start; }
-.jdq .jdq-col { min-width: 0; }
-.jdq .jdq-toph { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--jdq-muted); margin-bottom: 6px; }
-.jdq .jdq-toph span { text-transform: none; letter-spacing: 0; font-weight: 400; }
-.jdq .jdq-colh { margin-bottom: 6px; font-size: 12px; font-weight: 600; color: var(--jdq-muted); }  /* one label above each column */
-.jdq .jdq-colh .jdq-who { letter-spacing: .06em; text-transform: uppercase; }
-.jdq .jdq-colh .jdq-hn { text-align: right; white-space: nowrap; }
-.jdq .jdq-list { list-style: none; display: grid; gap: 5px; }
-.jdq .jdq-frow, .jdq .jdq-trow { display: grid; align-items: center; gap: 10px; font-size: 13.5px; margin: 0; }
-.jdq .jdq-frow { grid-template-columns: minmax(7em, 11em) minmax(60px, 1fr) 3.8em 4.6em 5em; }
-.jdq .jdq-trow { grid-template-columns: minmax(0, 1fr) minmax(40px, 80px) 3.8em 4.6em; }
-.jdq .jdq-who { overflow-wrap: anywhere; line-height: 1.3; }  /* real names wrap, never cut */
-.jdq .jdq-num { font: 500 12.5px var(--jdq-num); text-align: right; }
-.jdq .jdq-q { text-align: right; white-space: nowrap; }
-.jdq .jdq-bar { display: block; height: 6px; background: var(--jdq-track); border-radius: 3px; overflow: hidden; }
-.jdq .jdq-fill { display: block; height: 100%; background: var(--jdq-lum); }
-.jdq .jdq-beekeeper .jdq-fill { background: var(--jdq-bee); }
-.jdq .jdq-insight { font-size: 14px; background: var(--jdq-bg); border-radius: 8px; padding: 8px 12px; }
-.jdq .jdq-footer { font-size: 13px; color: var(--jdq-muted); font-style: italic; }
-.jdq a { color: var(--jdq-lum); text-decoration: underline; }
-/* the glossary, folded above the overview (render_glossary) */
-.jdq .jdq-gloss { background: var(--jdq-surface); border: 1px solid var(--jdq-line); border-left: 4px solid var(--jdq-down); border-radius: 10px; }
-.jdq .jdq-gloss > summary { cursor: pointer; padding: 12px 16px; list-style: none; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.jdq .jdq-gloss > summary::-webkit-details-marker { display: none; }
-.jdq .jdq-gloss > summary:hover { background: var(--jdq-bg); border-radius: 10px; }
-.jdq .jdq-gtitle { font-weight: 600; }
-.jdq .jdq-gtitle span { display: block; font-weight: 400; font-size: 13px; color: var(--jdq-muted); }
-.jdq .jdq-gbtn { margin-left: auto; font-size: 13px; font-weight: 600; color: #fff; background: var(--jdq-down);
-  border-radius: 999px; padding: 5px 14px; white-space: nowrap; }  /* reads as a button, so readers know it opens */
-.jdq .jdq-gbtn::after { content: "Show definitions ▾"; }
-.jdq .jdq-gloss[open] .jdq-gbtn { background: var(--jdq-flat-bg); color: var(--jdq-ink); }
-.jdq .jdq-gloss[open] .jdq-gbtn::after { content: "Hide ▴"; }
-.jdq .jdq-gbody { display: grid; gap: 18px; padding: 4px 16px 16px; }
-.jdq .jdq-terms { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-.jdq .jdq-term { background: var(--jdq-bg); border-radius: 8px; padding: 8px 10px; font-size: 13px; }
-.jdq .jdq-term strong { display: block; font-size: 13.5px; }
-.jdq .jdq-gcols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start; }
-.jdq .jdq-gplat { display: grid; gap: 6px; }  /* the coloured label names the platform, no side bar */
-.jdq .jdq-gplat .jdq-klabel { color: var(--jdq-lum); }
-.jdq .jdq-gplat.jdq-beekeeper .jdq-klabel { color: var(--jdq-bee); }
-.jdq .jdq-gdef { display: grid; grid-template-columns: minmax(6.5em, 9em) minmax(0, 1fr); gap: 10px;
-  font-size: 13.5px; padding: 5px 0; border-top: 1px solid var(--jdq-line); }
-.jdq .jdq-klabel + .jdq-gdef { border-top: 0; }
-@media (max-width: 760px) {
-  .jdq .jdq-cols, .jdq .jdq-hl, .jdq .jdq-tiles { grid-template-columns: 1fr; }
-  .jdq .jdq-terms { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .jdq .jdq-gcols { grid-template-columns: 1fr; }
+# The LumApps brand shell, copied from the artifact skill of the lumapps-utils plugin
+# (skills/artifact/assets/shell.css, plugin 0.5.0). Every selector starts with .lwa, so
+# the CMS styles cannot change the block. Update the copy when the shell changes.
+SHELL_CSS = (Path(__file__).parent / "assets" / "shell.css").read_text(encoding="utf-8")
+
+# The deliverables. The Markdown they come from is a draft kept in data/drafts/ (gitignored).
+ARTICLES_DIR = Path(__file__).parent / "articles"
+
+# What the Jobs Done pages add to the shell: the KPI values, the change tags, the bars,
+# the glossary. Same rule: every selector under .lwa, the shell's colours only.
+JD_CSS = """\
+/* Jobs Done additions to the brand shell */
+/* Yellow is kept as an accent (header, card tops, bars). Tables, cards and steps use
+   white and the shell's lines instead of its cream and yellow fills. */
+/* Body text one pixel under the shell's 16px; the titles keep the shell's sizes. */
+.lwa{font-size:15px}
+.lwa table{font-size:inherit}   /* tables do not inherit it in quirks mode */
+.lwa th{background:#EEEEEE !important; border-bottom:2px solid #D4D4D4 !important; color:var(--ink) !important; font-size:13px; text-transform:uppercase; letter-spacing:.04em}
+.lwa .lwa-cards > div, .lwa .lwa-steps > div{background:var(--white)}
+/* KPI tiles: a pale tint of their top colour, to set them apart (white where color-mix is unsupported) */
+.lwa .jd-kpis > div{background:color-mix(in srgb, var(--c) 16%, white)}
+.lwa .lwa-steps .lwa-n{background:var(--cream)}
+.lwa .lwa-callout{background:var(--white); border:1px solid var(--line); border-left:6px solid var(--blue)}
+.lwa .jd-kpis > div{display:grid; gap:2px}
+/* five cards of one size on one row. The widget is narrower than the page on some
+   layouts, so the rows follow the width of the block itself (a container query):
+   three then two centred when it is narrow, one per row on a phone. */
+.lwa .jd-kpis-box{container-type:inline-size; margin:0 0 16px}
+.lwa .jd-kpis{grid-template-columns:repeat(5,minmax(0,1fr)); margin:0; row-gap:14px}
+/* each card spans four rows of the grid (label, value, change, subtitle), shared by the
+   cards of a row, so a label on two lines keeps every value on one line */
+.lwa .jd-kpis > div{padding:14px; grid-row:span 4; grid-template-rows:subgrid; row-gap:2px; align-content:start}
+.lwa .lwa-cards > div > span.jd-v{font-size:26px}
+@container (max-width:900px){
+  .lwa .jd-kpis{grid-template-columns:repeat(6,minmax(0,1fr))}
+  .lwa .jd-kpis > div{grid-column:span 2}
+  .lwa .jd-kpis > div:nth-child(4){grid-column:2 / span 2}
 }
-@media (max-width: 520px) {
-  .jdq { padding: 14px; }
-  .jdq .jdq-terms, .jdq .jdq-gdef { grid-template-columns: 1fr; gap: 2px; }
-  .jdq .jdq-frow { grid-template-columns: minmax(0, 1fr) 3.4em 4.4em 4.8em; }
-  .jdq .jdq-trow { grid-template-columns: minmax(0, 1fr) 3.4em 4.4em; }
-  .jdq .jdq-bar, .jdq .jdq-colh .jdq-hb { display: none; }
-  .jdq .jdq-gshare { margin-left: 0; width: 100%; }
+@container (max-width:520px){
+  .lwa .jd-kpis{grid-template-columns:1fr}
+  .lwa .jd-kpis > div, .lwa .jd-kpis > div:nth-child(4){grid-column:auto}
+}
+.lwa .lwa-cards > div > span.jd-v{font-size:30px; font-weight:900; line-height:1.15; color:var(--ink); font-variant-numeric:tabular-nums}
+.lwa .lwa-tag{font-variant-numeric:tabular-nums; white-space:nowrap}
+.lwa{--jd-down:#F4A396}
+.lwa .lwa-tag--down{background:var(--jd-down)}
+.lwa .jd-hl > div > ul{margin:6px 0 0; padding-left:20px; font-size:15px}
+/* biggest movers: a light green or coral edge per side, the leading feature under the name */
+.lwa tr.jd-sub td{background:#F7F7F7 !important; font-size:13px; font-weight:700; color:var(--ink-soft) !important; padding-top:7px !important; padding-bottom:7px !important}
+.lwa tr.jd-gain td:first-child{box-shadow:inset 4px 0 0 #DCEFA8}
+.lwa tr.jd-loss td:first-child{box-shadow:inset 4px 0 0 #F8C9C2}
+.lwa .jd-led{display:block; font-size:13px; color:var(--ink-soft)}
+/* the same air before each section and each tribe, the first tribe excepted */
+.lwa .lwa-body > h2{margin-top:56px}   /* the shell zeroes the top margin of every body child */
+.lwa h3.jd-tribe{font-size:21px; margin:56px 0 8px}
+.lwa h2 + h3.jd-tribe{margin-top:12px}
+/* an overview value with its unrounded figure as a tooltip */
+.lwa .jd-exact{text-decoration:underline dotted #BDBDBD; text-decoration-thickness:2px; text-underline-offset:6px}
+.lwa .jd-group{display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 12px; margin:0 0 12px}
+.lwa .jd-group .jd-v{font-size:17px; font-weight:900; font-variant-numeric:tabular-nums}
+.lwa .jd-muted{color:var(--ink-soft); font-size:14px}
+.lwa td.jd-num, .lwa th.jd-num{text-align:right !important; white-space:nowrap; font-variant-numeric:tabular-nums}
+.lwa td.jd-share{width:34%}
+.lwa .jd-share-row{display:grid; grid-template-columns:minmax(40px,1fr) 4.2em; gap:10px; align-items:center}
+.lwa .jd-bar{display:block; height:8px; background:#DCDCDC; border-radius:4px; overflow:hidden}
+.lwa .jd-fill{display:block; height:100%; background:#707070; border-radius:4px}
+.lwa .lwa-steps .lwa-n{font-size:22px; font-weight:400}
+.lwa .lwa-steps > div{align-items:center}
+.lwa .lwa-steps > div > div > p{margin:0}
+/* the scope, the same in every report: small and muted, at the very end */
+.lwa .jd-scope{color:var(--ink-soft); font-size:13px; line-height:1.5; margin:24px 0 8px; padding-top:12px; border-top:1px solid var(--line)}
+.lwa .jd-scope p{margin:0 0 2px}
+.lwa .jd-scope ul{margin:0; padding-left:18px}
+.lwa .jd-scope li{margin:1px 0}
+.lwa .jd-scope strong{font-weight:700}
+/* the dashboard line, in plain text above the scope so it stands out */
+.lwa .jd-footer{margin:24px 0 0; padding:12px 16px; background:#F3F3F3; border-radius:10px; font-size:15px; font-weight:700; color:var(--ink)}
+.lwa .jd-gloss{margin:0 0 20px; background:var(--white); border:1px solid var(--line); border-left:6px solid var(--yellow); border-radius:10px}
+.lwa .jd-gloss > summary{cursor:pointer; padding:12px 16px; list-style:none; display:flex; align-items:center; gap:12px; font-weight:700}
+.lwa .jd-gloss > summary > div{display:flex; flex-wrap:wrap; align-items:baseline; column-gap:12px; row-gap:2px}
+.lwa .jd-gloss > summary b{font-size:16px}
+.lwa .jd-gloss > summary::-webkit-details-marker{display:none}
+.lwa .jd-gloss > summary span{font-weight:400; font-size:14px; color:var(--ink-soft)}
+.lwa .jd-gloss > summary::after{content:"Show definitions ▾"; margin-left:auto; flex:none; white-space:nowrap; background:var(--yellow); border-radius:999px; padding:6px 14px; font-size:13px; font-weight:700}
+.lwa .jd-gloss[open] > summary::after{content:"Hide ▴"; background:#EEEEEE; color:var(--ink)}
+.lwa .jd-gbody{padding:0 16px 14px}
+.lwa .jd-gterms{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin:4px 0 18px}
+.lwa .jd-gterms > div{background:#F3F3F3; border-radius:8px; padding:10px 12px; font-size:14px; line-height:1.4}
+.lwa .jd-gterms b{display:block; margin-bottom:2px}
+.lwa .jd-gterms span{color:var(--ink-soft)}
+.lwa .jd-gfeatures{columns:2; column-gap:32px}
+.lwa .jd-gtribe{break-inside:avoid; margin:0 0 16px}
+.lwa .jd-gtribe > p{margin:0 0 4px; font-size:12.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-soft)}
+.lwa .jd-gtribe > div{display:grid; grid-template-columns:150px 1fr; gap:12px; padding:7px 0; border-bottom:1px solid var(--line); font-size:14px; line-height:1.4}
+.lwa .jd-gtribe > div:last-child{border-bottom:0}
+.lwa .jd-gtribe span{color:var(--ink)}
+@media (max-width:720px){
+  .lwa .jd-gterms{grid-template-columns:1fr 1fr}
+  .lwa .jd-gfeatures{columns:1}
+  .lwa td.jd-share{width:auto}
+  .lwa .jd-bar{display:none}
 }
 """
 
-PLATFORMS = {"LumApps": "lumapps", "Beekeeper": "beekeeper"}
-OVERVIEW_ITEM = re.compile(r"^- (LumApps|Beekeeper) (\S+) \((\S+|flat) QoQ\)$")
-GROUP_LINE = re.compile(r"^- Jobs Done: (\S+) \((\S+|flat) QoQ\), ([\d.]+)% of (LumApps|Beekeeper) Jobs Done$")
-FEATURE_LINE = re.compile(r"^- (\S+)\s+\*\*([^*]+)\*\*: (\S+) \(([^)]*?)(?: QoQ)?\), ([\d.]+)% of the domain$")
-COMPANY_LINE = re.compile(r"^\d\.\s+(.+), (\S+) \(([\d.]+)% of .+ Jobs Done\)$")
+CARD_COLOURS = ("yellow", "blue", "green", "purple", "pink")
+# An overview KPI line, as overview_lines() in jobs_done_common.py writes it.
+KPI_LINE = re.compile(r"^(\S+) (.+?): (\S+) \((.+) (MoM|QoQ)\)$")
+GROUP_LINE = re.compile(r"^- Jobs Done: (\S+) \((\S+|flat) QoQ\), ([\d.]+)% of all Jobs Done$")
+FEATURE_LINE = re.compile(r"^- (\S+)\s+\*\*([^*]+)\*\*: (\S+) \(([^)]*?)(?: QoQ)?\), ([\d.]+)% of the tribe$")
+# A company of a tribe's biggest movers, as mover_line() in prepare_quarterly.py writes it.
+MOVER_LINE = re.compile(r"^(\d)\.\s+(.+?), ([+-]\S+) Jobs Done \((.+?)(?: QoQ)?\)"
+                        r"(?:, led by (.+) \(([+-]\S+)\))?$")
+MOVER_LABELS = {"Companies gaining the most Jobs Done:": ("▲ Gaining the most", "gain"),
+                "Companies losing the most Jobs Done:": ("▼ Losing the most", "loss")}
 CHANGE = re.compile(r"([+-]\d[\d.]*%|\bflat\b)(?= QoQ)")
+# Introductions stay plain text: the change tags are for cards, lists and tables.
+NO_CHIPS = re.compile(r"(?!)")
+DOMAINS_SECTION = "By tribe"
 
 
 class Unreadable(Exception):
@@ -146,21 +163,23 @@ def inline(text: str) -> str:
 
 
 def chip(change: str) -> str:
-    """A QoQ as a coloured chip: under 0.05% either way reads as flat, as in the article."""
-    value = 0.0 if change == "flat" else float(change.rstrip("%"))
-    kind = "flat" if abs(value) < 0.05 else ("up" if value > 0 else "down")
-    return f'<span class="jdq-chg jdq-{kind}">{html.escape(change)}</span>'
+    """A change as a coloured tag ("+1.2%", "-0.4 pts", "flat"): green up, pink down,
+    plain when it rounds to nothing, as in the article."""
+    value = 0.0 if change == "flat" else float(change.split()[0].rstrip("%"))
+    kind = "" if abs(value) < 0.05 else (" lwa-tag--done" if value > 0 else " lwa-tag--down")
+    return f'<span class="lwa-tag{kind}">{html.escape(change)}</span>'
 
 
-def with_chips(text: str) -> str:
-    """Inline Markdown, with each '<change> QoQ' turned into a chip."""
-    return CHANGE.sub(lambda m: chip(m.group(1)), inline(text))
+def with_chips(text: str, pattern: re.Pattern = CHANGE) -> str:
+    """Inline Markdown, with each change before its unit turned into a tag."""
+    return pattern.sub(lambda m: chip(m.group(1)), inline(text))
 
 
-def bar(share: float) -> str:
-    width = min(max(share, 0.0), 100.0)
-    return (f'<span class="jdq-bar" aria-hidden="true">'
-            f'<span class="jdq-fill" style="width:{width:.2f}%"></span></span>')
+def share_cell(share: str) -> str:
+    width = min(max(float(share), 0.0), 100.0)
+    return (f'<td class="jd-share"><div class="jd-share-row"><span class="jd-bar" aria-hidden="true">'
+            f'<span class="jd-fill" style="width:{width:.2f}%"></span></span>'
+            f'<span class="jd-num">{share}%</span></div></td>')
 
 
 def paragraphs(lines: list[str]) -> list[str]:
@@ -187,184 +206,261 @@ def split_on(lines: list[str], prefix: str) -> list[tuple[str, list[str]]]:
     return out
 
 
-def scope_features(lines: list[str]) -> list[str]:
-    """The features of a platform's scope sentence, in its order. None before September
-    2026, when articles had no scope sentence: the glossary then leaves the platform out."""
+def scope_tribes(lines: list[str]) -> list[tuple[str, list[str]]]:
+    """The tribes of the scope sentence with their features, in its order."""
     m = SCOPE.search("\n".join(lines))
     if not m:
         return []
-    return [f.strip() for _, fs in SCOPE_GROUP.findall(m.group(1)) for f in fs.split(",")]
+    return [(t, [f.strip() for f in fs.split(",")]) for t, fs in SCOPE_GROUP.findall(m.group(1))]
 
 
-def render_glossary(scopes: dict[str, list[str]], metrics: list[tuple[str, str]]) -> str:
-    """What each metric and each feature of the scope sentences counts, folded by
-    default. Shared with the monthly render; each passes its own metric terms. The
+def prose(p: str, pattern: re.Pattern = CHANGE) -> str:
+    """A paragraph of the article: the scope sentence muted, a data warning as a callout,
+    the dashboard line as the footer."""
+    if p.startswith("*Data warning"):
+        return f'<div class="lwa-callout lwa-callout--warning"><p>⚠️ {inline(p.strip("*"))}</p></div>'
+    if p.startswith("*Full breakdown"):
+        return f'<p class="jd-footer">📊 {inline(p.strip("*"))}</p>'
+    if p.startswith("Jobs Done covers"):
+        return render_scope(p)
+    return f"<p>{with_chips(p, pattern)}</p>"
+
+
+def render_scope(sentence: str) -> str:
+    """The scope sentence as a list, one tribe per bullet with its features. The draft
+    keeps the sentence, which the checks read; the render moves it to the end of the
+    article, under the dashboard line, since it is the same in every report."""
+    tribes = SCOPE_GROUP.findall(SCOPE.search(sentence).group(1))
+    if not tribes:
+        raise Unreadable(f"scope sentence: {sentence[:60]!r}")
+    items = "".join(f"<li><strong>{html.escape(t)}</strong>: {html.escape(fs)}</li>" for t, fs in tribes)
+    return f'<div class="jd-scope"><p>Jobs Done covers:</p><ul>{items}</ul></div>'
+
+
+def render_glossary(tribes: list[tuple[str, list[str]]], metrics: list[tuple[str, str]]) -> str:
+    """What each metric and each feature of the scope sentence counts, folded by
+    default: the metrics as small cards, then the features tribe by tribe, on two
+    columns. Shared with the monthly render; each passes its own metric terms. The
     definitions live in jobs_done_common.py."""
-    terms = "".join(f'<div class="jdq-term"><strong>{html.escape(t)}</strong>{html.escape(d)}</div>'
+    missing = [f for _, fs in tribes for f in fs if f not in FEATURE_DEFINITIONS]
+    if missing:
+        raise Unreadable(f"no FEATURE_DEFINITIONS entry for {', '.join(missing)}")
+    terms = "".join(f"<div><b>{html.escape(t)}</b><span>{html.escape(d)}</span></div>"
                     for t, d in metrics)
-    cols = []
-    for platform, features in scopes.items():
-        defs = FEATURE_DEFINITIONS[platform]
-        missing = [f for f in features if f not in defs]
-        if missing:
-            raise Unreadable(f"{platform}: no FEATURE_DEFINITIONS entry for {', '.join(missing)}")
-        rows = "".join(f'<div class="jdq-gdef"><strong>{EMOJI.get(f, "")} {html.escape(f)}</strong>'
-                       f'<span>{html.escape(defs[f])}</span></div>' for f in features)
-        cols.append(f'<div class="jdq-gplat jdq-{PLATFORMS[platform]}">'
-                    f'<div class="jdq-klabel">{platform}: one Job Done is</div>{rows}</div>')
-    return (f'<details class="jdq-gloss"><summary><span class="jdq-gtitle">📖 What the numbers count'
-            f'<span>Content counts page views, not pages created. Open for every feature.</span></span>'
-            f'<span class="jdq-gbtn" aria-hidden="true"></span></summary>'
-            f'<div class="jdq-gbody"><div class="jdq-terms">{terms}</div>'
-            f'<div class="jdq-gcols">{"".join(cols)}</div></div></details>')
+    blocks = "".join(
+        f'<div class="jd-gtribe"><p>{html.escape(t)}: one Job Done is</p>'
+        + "".join(f"<div><b>{EMOJI.get(f, '')} {html.escape(f)}</b>"
+                  f"<span>{html.escape(FEATURE_DEFINITIONS[f])}</span></div>" for f in fs)
+        + "</div>" for t, fs in tribes)
+    return (f'<details class="jd-gloss"><summary><div><b>📖 What the numbers count</b>'
+            f'<span>Content counts page views, not pages created. Open for every feature.</span>'
+            f'</div></summary><div class="jd-gbody">'
+            f'<div class="jd-gterms">{terms}</div><div class="jd-gfeatures">{blocks}</div>'
+            f'</div></details>')
 
 
-def render_overview(lines: list[str], quarter: str) -> str:
-    out, blocks = [], []
-    subtitle = {"Jobs Done": f"Jobs Done in {quarter}",
-                "Monthly active users": "active in the last 28 days of the quarter",
-                "Users Completing Jobs": "unique users over the quarter"}
-    for line in lines:
-        if line.startswith(("✅", "📈", "👥")):
-            blocks.append((line.strip(), []))
-        elif line.startswith("- ") and blocks:
-            m = OVERVIEW_ITEM.match(line.strip())
-            if not m:
-                raise Unreadable(f"overview line: {line!r}")
-            blocks[-1][1].append(m.groups())
-    for label, items in blocks:
-        kind = next((k for k in subtitle if k in label), None)
-        if not kind:
-            raise Unreadable(f"overview label: {label!r}")
-        tiles = "".join(
-            f'<div class="jdq-tile jdq-{PLATFORMS[p]}"><span class="jdq-tl">{p}</span>'
-            f'<span class="jdq-tv">{html.escape(v)}</span>'
-            f'<span class="jdq-tc">{chip(c)} QoQ</span>'
-            f'<span class="jdq-tu">{subtitle[kind]}</span></div>'
-            for p, v, c in items)
-        out.append(f'<div><div class="jdq-klabel">{html.escape(label)}</div>'
-                   f'<div class="jdq-tiles">{tiles}</div></div>')
-    return "".join(out)
+def exact_values(lines: list[str], cur: dict | None, prev: dict | None, unit: str) -> dict:
+    """{KPI line: its unrounded value}, for the tooltips on the overview cards.
+
+    Read from the CSVs the check traced the article to. A line the data no longer
+    rebuilds to the letter (the data was fetched again since) gets no tooltip.
+    """
+    if not cur:
+        return {}
+    exact = {"Jobs Done": f"{cur['jd']:,.0f}", "Users with a Job Done": f"{cur['users']:,.0f}",
+             "Jobs per User": f"{cur['jpu']:.2f}", "MAU": f"{cur['mau']:,.0f}",
+             "Reach": f"{cur['reach']:.2f}%"}
+    written = {l.strip() for l in lines}
+    return {line: exact[line.split(":")[0].split(" ", 1)[1]]
+            for line in overview_lines(cur, prev, unit) if line in written}
+
+
+def render_kpis(lines: list[str], subtitles: dict[str, str], exact: dict | None = None) -> str:
+    """The five KPI lines of an overview as cards, the other lines as paragraphs.
+
+    Five cards of one size on one row, in the dashboard's order. On a narrow block, the
+    three Jobs Done KPIs, then MAU and Reach centred; on a phone, one per row. `subtitles` maps each KPI name to the small line under its value.
+    `exact` maps a KPI line to its unrounded value, shown as a tooltip on the value.
+    """
+    exact = exact or {}
+    cards, rest = [], []
+    for line in (l.strip() for l in lines):
+        if not line or line == "---":
+            continue
+        m = KPI_LINE.match(line)
+        if m and m.group(2) in subtitles:
+            emoji, name, value, chg, unit = m.groups()
+            colour = CARD_COLOURS[len(cards) % len(CARD_COLOURS)]
+            tip = (f' class="jd-v jd-exact" title="{html.escape(exact[line])}"' if line in exact
+                   else ' class="jd-v"')
+            cards.append(f'<div style="--c:var(--{colour})"><b>{html.escape(emoji)} {html.escape(name)}</b>'
+                         f'<span{tip}>{html.escape(value)}</span>'
+                         f'<span>{chip(chg)} {unit}</span><span>{subtitles[name]}</span></div>')
+        elif line.startswith(KPI_EMOJI):
+            raise Unreadable(f"overview line: {line!r}")
+        else:
+            rest.append(line)
+    if len(cards) != len(subtitles):
+        raise Unreadable(f"overview: {len(cards)} KPI lines, expected {len(subtitles)}")
+    return (f'<div class="jd-kpis-box"><div class="lwa-cards jd-kpis">{"".join(cards)}</div></div>'
+            + "".join(prose(p, NO_CHIPS) for p in paragraphs(rest)))
+
+
+def wrap(slug: str, eyebrow: str, title: str, intro: list[str], body: str) -> str:
+    """The block: the brand shell around the article, as the artifact skill builds it."""
+    return "\n".join([
+        f'<section class="lwa" id="lwa-{slug}" aria-label="{html.escape(title)}">',
+        f"<style>\n{SHELL_CSS.strip()}\n{JD_CSS.strip()}\n</style>",
+        f'<header class="lwa-hero"><div class="lwa-wrap">',
+        f'<div class="lwa-eyebrow">{html.escape(eyebrow)}</div>',
+        f"<h1>{html.escape(title)}</h1>",
+        "</div></header>",
+        '<div class="lwa-wrap"><div class="lwa-body">',
+        "".join(prose(p) for p in intro),
+        body,
+        "</div></div>",
+        "</section>",
+        "",
+    ])
 
 
 def render_highlights(sections: list[tuple[str, list[str]]]) -> str:
-    boxes = []
+    """The two highlight lists as cards, then the introduction that closes the overview
+    (the prose after the lists), as plain paragraphs."""
+    cards, closing = [], []
     for title, lines in sections:
+        colour = "green" if "grew" in title else "jd-down"
         items = "".join(f"<li>{with_chips(l[2:].strip())}</li>" for l in lines if l.startswith("- "))
-        boxes.append(f'<div class="jdq-hlbox"><h3 class="jdq-h3">{inline(title)}</h3><ul>{items}</ul></div>')
-    return f'<div class="jdq-hl">{"".join(boxes)}</div>'
+        cards.append(f'<div style="--c:var(--{colour})"><b>{inline(title)}</b><ul>{items}</ul></div>')
+        closing += [l for l in lines if not l.strip().startswith("- ")]
+    return (f'<div class="lwa-cards jd-hl">{"".join(cards)}</div>'
+            + "".join(prose(p, NO_CHIPS) for p in paragraphs(closing)))
 
 
-def header(row: str, first: str, *labels: str) -> str:
-    """Column labels on the same grid as the rows below, the bar column left blank.
-
-    "Share" is each row's share of the domain's Jobs Done.
-    """
-    cells = "".join(f'<span class="jdq-hn">{l}</span>' for l in labels)
-    return (f'<div class="jdq-{row} jdq-colh"><span class="jdq-who">{first}</span>'
-            f'<span class="jdq-hb" aria-hidden="true"></span>{cells}</div>')
-
-
-def render_group(platform: str, name: str, lines: list[str]) -> str:
+def render_group(name: str, lines: list[str]) -> str:
     jd = change = share = None
-    features, companies, insight = [], [], ""
+    features, movers, insight = [], {}, ""
+    side = None
     for line in (l.strip() for l in lines):
-        if not line or line == "---" or line in ("Features by Jobs Done:", "Top 3 companies by Jobs Done:"):
+        if not line or line == "---" or line == "Features by Jobs Done:":
             continue
-        if m := GROUP_LINE.match(line):
+        if line in MOVER_LABELS:
+            side = MOVER_LABELS[line]
+            movers[side] = []
+        elif m := GROUP_LINE.match(line):
             jd, change, share = m.group(1), m.group(2), m.group(3)
         elif m := FEATURE_LINE.match(line):
             features.append(m.groups())
-        elif m := COMPANY_LINE.match(line):
-            companies.append(m.groups())
+        elif side and (m := MOVER_LINE.match(line)):
+            movers[side].append(m.groups())
         elif line.startswith("💡"):
             insight = line
         else:
-            raise Unreadable(f"{platform}/{name}: {line!r}")
+            raise Unreadable(f"{name}: {line!r}")
     if jd is None:
-        raise Unreadable(f"{platform}/{name}: no '- Jobs Done: ...' line")
+        raise Unreadable(f"{name}: no '- Jobs Done: ...' line")
 
     rows = "".join(
-        f'<li class="jdq-frow"><span class="jdq-who">{html.escape(emoji)} {html.escape(feat)}</span>'
-        f'{bar(float(sh))}<span class="jdq-num">{sh}%</span>'
-        f'<span class="jdq-num">{html.escape(v)}</span><span class="jdq-q">{chip(c)}</span></li>'
+        f'<tr><td>{html.escape(emoji)} {html.escape(feat)}</td><td class="jd-num">{html.escape(v)}</td>'
+        f'<td class="jd-num">{chip(c)}</td>{share_cell(sh)}</tr>'
         for emoji, feat, v, c, sh in features)
-    top = "".join(
-        f'<li class="jdq-trow"><span class="jdq-who">{html.escape(who)}</span>{bar(float(sh))}'
-        f'<span class="jdq-num">{sh}%</span><span class="jdq-num">{html.escape(v)}</span></li>'
-        for who, v, sh in companies)
-    top_col = (f'<div class="jdq-col">{header("trow", "Top 3 companies", "Share", "Jobs Done")}'
-               f'<ol class="jdq-list">{top}</ol></div>' if companies else "")
-    return (f'<div class="jdq-dom"><div class="jdq-dhead"><span class="jdq-dname">{inline(name)}</span>'
-            f'<span class="jdq-gshare">{share}% of {platform} Jobs Done</span></div>'
-            f'<div class="jdq-big"><span class="jdq-bigv">{html.escape(jd)}</span> Jobs Done '
-            f'{chip(change)} <span class="jdq-muted">QoQ</span></div>'
-            f'<div class="jdq-cols"><div class="jdq-col">{header("frow", "Features", "Share", "Jobs Done", "QoQ")}'
-            f'<ol class="jdq-list">{rows}</ol></div>'
-            f'{top_col}</div>'
-            + (f'<p class="jdq-insight">{inline(insight)}</p>' if insight else "")
-            + "</div>")
+    def mover(kind, rank, who, v, q, feature, feature_change):
+        led = (f'<span class="jd-led">led by {html.escape(EMOJI.get(feature, ""))} '
+               f"{html.escape(feature)} {html.escape(feature_change)}</span>" if feature else "")
+        return (f'<tr class="jd-{kind}"><td>{rank}. {html.escape(who)}{led}</td>'
+                f'<td class="jd-num">{html.escape(v)}</td>'
+                f'<td class="jd-num">{chip(q) if q[0] in "+-" else html.escape(q)}</td></tr>')
+    moves = "".join(
+        f'<tr class="jd-sub"><td colspan="3">{title}</td></tr>'
+        + "".join(mover(kind, *row) for row in rows)
+        for (title, kind), rows in movers.items())
+    return (f'<h3 class="jd-tribe">{inline(name)}</h3>'
+            f'<div class="jd-group"><span class="jd-v">{html.escape(jd)}</span> Jobs Done '
+            f'{chip(change)} <span class="jd-muted">QoQ · {share}% of all Jobs Done</span></div>'
+            f'<table><tr><th>Feature</th><th class="jd-num">Jobs Done</th><th class="jd-num">QoQ</th>'
+            f"<th>Share of the tribe</th></tr>{rows}</table>"
+            + (f'<table class="jd-movers"><tr><th>Biggest movers by company</th>'
+               f'<th class="jd-num">Change</th><th class="jd-num">QoQ</th></tr>{moves}</table>'
+               if movers else "")
+            + (f'<div class="lwa-callout"><p>{inline(insight)}</p></div>' if insight else ""))
 
 
-def render_platform(platform: str, lines: list[str]) -> str:
+def render_domains(lines: list[str]) -> str:
+    """Scope sentence and intro, one block per domain group, the dashboard line last."""
     groups = split_on(lines, "### ")
     intro = lines[:next((i for i, l in enumerate(lines) if l.startswith("### ")), len(lines))]
     footer = next((l.strip() for l in lines if l.startswith("*Full breakdown")), "")
-    if groups:   # the footer sits under the last group: keep it out of the card
+    if groups:   # the footer sits under the last group: keep it out of its block
         last = groups[-1][1]
         groups[-1] = (groups[-1][0], [l for l in last if not l.startswith("*Full breakdown")])
-    head = []
-    for p in paragraphs(intro):
-        cls = ' class="jdq-scope"' if p.startswith("Jobs Done covers") else ""
-        head.append(f"<p{cls}>{inline(p)}</p>")
-    cards = "".join(render_group(platform, g, ls) for g, ls in groups)
-    foot = f'<p class="jdq-footer">{inline(footer.strip("*"))}</p>' if footer else ""
-    return (f'<div class="jdq-platform jdq-{PLATFORMS[platform]}"><div class="jdq-phead">'
-            f'<h2 class="jdq-h2">{platform}</h2>{"".join(head)}</div>{cards}{foot}</div>')
+    scope = [p for p in paragraphs(intro) if p.startswith("Jobs Done covers")]
+    return (f"<h2>{DOMAINS_SECTION}</h2>"
+            + "".join(prose(p) for p in paragraphs(intro) if p not in scope)
+            + "".join(render_group(g, ls) for g, ls in groups)
+            + (prose(footer) if footer else "") + "".join(prose(p) for p in scope))
 
 
-def render(text: str) -> str:
+def quarter_exact(q: str, lines: list[str]) -> dict:
+    """The unrounded overview values of quarter `q` ("Q3 2026"), when its data is on file."""
+    import prepare_quarterly as pq
+    key = f"{q[3:]}-{q[:2]}"
+    if not pq.data_file("totals", key).exists():
+        return {}
+    totals = pq.read_totals(key)
+    return exact_values(lines, pq.quarter_kpis(totals, key),
+                        pq.quarter_kpis(totals, pq.shift_quarter(key, -1)), "QoQ")
+
+
+def render(text: str, slug: str = "jobs-done") -> str:
     lines = text.splitlines()
     title = next((l[2:].strip() for l in lines if l.startswith("# ")), None)
     quarter = re.search(r"Q[1-4] \d{4}", title or "")
     if not quarter:
         raise Unreadable("no '# Jobs Done - QN YYYY Product Performance' title")
+    q = quarter.group(0)
     sections = split_on(lines, "## ")
     top = lines[:next((i for i, l in enumerate(lines) if l.startswith("## ")), len(lines))]
+    # A *Data warning: ...* line stays in the text, as a callout under the title.
+    intro = [p for p in paragraphs(top) if not p.startswith("# ")]
 
-    # A *Data warning: ...* line stays in the text, never as a banner.
-    mast = [f"<p>{inline(p)}</p>" for p in paragraphs(top) if not p.startswith("# ")]
-
-    scopes = {name: fs for name, sec in sections if name in PLATFORMS and (fs := scope_features(sec))}
-    body = [render_glossary(scopes, GLOSSARY_METRICS_QUARTERLY)] if scopes else []
+    tribes = next((ts for name, sec in sections if name == DOMAINS_SECTION
+                   and (ts := scope_tribes(sec))), [])
+    body = [render_glossary(tribes, GLOSSARY_METRICS_QUARTERLY)] if tribes else []
+    subtitles = {"Jobs Done": f"over {q}",
+                 "Users with a Job Done": f"unique users over {q}",
+                 "Jobs per User": "Jobs Done per user with a Job Done",
+                 "MAU": f"active users, last 28 days of {q}",
+                 "Reach": "users with a Job Done over 28 days / MAU"}
     for name, sec in sections:
         if name == "High level overview":
             hl = split_on(sec, "### ")
             before = sec[:next((i for i, l in enumerate(sec) if l.startswith("### ")), len(sec))]
-            body.append(f'<div class="jdq-overview"><h2 class="jdq-h2">High level overview</h2>'
-                        f"{render_overview(before, quarter.group(0))}{render_highlights(hl)}</div>")
-        elif name in PLATFORMS:
-            body.append(render_platform(name, sec))
+            body.append(f"<h2>High level overview</h2>"
+                        f"{render_kpis(before, subtitles, quarter_exact(q, before))}"
+                        f"{render_highlights(hl)}")
+        elif name == DOMAINS_SECTION:
+            body.append(render_domains(sec))
         else:
             raise Unreadable(f"unknown section '## {name}'")
-
-    return (f"<style>\n{CSS}\n</style>\n"
-            f'<div class="jdq"><div class="jdq-mast"><span class="jdq-eyebrow">'
-            f'Product usage KPI · Quarterly</span><h2 class="jdq-title">{inline(title)}</h2>'
-            f'{"".join(mast)}</div>{"".join(body)}</div>\n')
+    return wrap(slug, "Product usage KPI · Quarterly", title, intro, "".join(body))
 
 
 def main():
-    if len(sys.argv) != 2:
-        sys.exit("usage: render_quarterly_html.py articles/quarterly_YYYY-QN.md")
-    src = Path(sys.argv[1])
-    if not re.search(r"quarterly_\d{4}-Q[1-4]\.md$", src.name):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("draft", help="data/drafts/quarterly_YYYY-QN.md, the checked draft")
+    parser.add_argument("--out-dir", default=str(ARTICLES_DIR),
+                        help="where to write the HTML (default: articles/)")
+    args = parser.parse_args()
+    src = Path(args.draft)
+    m = re.search(r"quarterly_(\d{4}-Q[1-4])\.md$", src.name)
+    if not m:
         sys.exit(f"[render_quarterly] expected quarterly_YYYY-QN.md, got {src.name}")
     try:
-        out = render(src.read_text(encoding="utf-8"))
+        out = render(src.read_text(encoding="utf-8"), f"jobs-done-{m.group(1).lower()}")
     except Unreadable as e:
         sys.exit(f"[render_quarterly] cannot lay out {src.name}: {e}")
-    dest = src.with_suffix(".html")
+    dest = Path(args.out_dir) / src.with_suffix(".html").name
+    dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(out, encoding="utf-8")
     print(f"[render_quarterly] wrote {dest}")
 
