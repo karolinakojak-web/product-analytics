@@ -52,9 +52,9 @@ find the same figures on the dashboard.
 ```
 
 Two or three plain sentences follow, on the month as a whole: the direction of Jobs
-Done, and how it sits against the months before (the 13-month table), then what Users
+Done, and how it sits against the months before (the 6-month table), then what Users
 with a Job Done and Jobs per User say about it (more people, or the same people doing
-more). Their figures must come from the overview or the 13-month table of the script.
+more). Their figures must come from the overview or the 6-month table of the script.
 
 ## Length
 
@@ -128,7 +128,9 @@ For each feature: two sentences, three at most, opening on its emoji and its bol
    feature's Reach or its share of its tribe.
 
 Pick the context that tells the story; do not list every metric. A feature's Reach is
-the dashboard's, with its *Feature* filter: name it "Reach".
+the dashboard's, with its *Feature* filter, and divides by the MAU of the organizations
+that have the feature: write "Streams reached 81.8% of the MAU of the organizations that
+have it", never "81.8% of MAU" (see the shared writing rules).
 
 ```
 📢 **Campaigns** grew +XX.X% MoM to XXX.XK Jobs Done, a third month up in a row. Users with a Job Done jumped +XX.X% to XXX.XK while Jobs per User fell -XX.X%: many more people opened a campaign, each one opening fewer.

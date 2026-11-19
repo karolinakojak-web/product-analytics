@@ -78,10 +78,15 @@ Features by Jobs Done:
 - 📡 **Streams**: XX.XM (-X.X% QoQ), XX.X% of the tribe
 - 📆 **Company Events**: XX.XK (-XX.X% QoQ), 0.01% of the tribe
 
-Top 3 companies by Jobs Done:
-1. Company A (company-a), XX.XM (X.X% of Communication & Collaboration Jobs Done)
-2. Company B (company-b), XX.XM (X.X% of Communication & Collaboration Jobs Done)
-3. Company C (company-c), XX.XM (X.X% of Communication & Collaboration Jobs Done)
+Companies gaining the most Jobs Done:
+1. Company A (company-a), +X.XXM Jobs Done (+XX.X% QoQ), led by Content (+X.XXM)
+2. Company B (company-b), +XXX.XK Jobs Done (+X.X% QoQ), led by Spaces (+XXX.XK)
+3. Company C (company-c), +XXX.XK Jobs Done (new this quarter), led by Content (+XXX.XK)
+
+Companies losing the most Jobs Done:
+1. Company D (company-d), -X.XXM Jobs Done (-XX.X% QoQ), led by Content (-X.XXM)
+2. Company E (company-e), -XXX.XK Jobs Done (-X.X% QoQ), led by Streams (-XXX.XK)
+3. Company F (company-f), -XX.XK Jobs Done (-100.0% QoQ), led by Posts (-XX.XK)
 
 💡 <one or two sentences>
 
@@ -178,14 +183,19 @@ carries over to the next reports that still see the same anomaly.
    under 0.1% with two decimals (0.04%), as the script prints it. Write a change under
    0.05% either way with two decimals (+0.04%), or "flat" when it rounds to 0.00%:
    never "+0.0%" or "-0.0%".
-4. **`Top 3 companies by Jobs Done:`**, the group's top 3 from the script (*Top 3
-   companies of the group*), each with its Jobs Done and its share of the group's Jobs
-   Done: `1. <Company> (<slug>), <JD> (<share>% of <Domain group> Jobs Done)`. A company
-   is one organization, labelled with its Salesforce account name and its slug: write
-   each exactly as the script prints them. The list is internal: the analyst removes
-   names before sharing further if needed. Skip the list only when the script prints no
-   company for the group. The per-feature top 3 the script also prints is material for
-   the 💡 line only.
+4. **The biggest movers by company**: the 3 organizations whose Jobs Done in the group
+   rose the most against the previous quarter, then the 3 that fell the most, ranked on
+   the change in Jobs Done, not in %. The script prints both lists under *Biggest
+   movers by company*: **copy each line as it is**, under its title
+   (`Companies gaining the most Jobs Done:`, `Companies losing the most Jobs Done:`).
+   The check rebuilds them and fails on any difference. A company's change adds up
+   every feature of the group; "led by" names the feature whose own change goes
+   furthest the same way, with that change (left out in a group of one feature). An
+   organization with no Jobs Done the quarter before reads "new this quarter". A company is one organization,
+   labelled with its Salesforce account name and its slug. The lists are internal: the
+   analyst removes names before sharing further if needed. A list the script does not
+   print (no organization went that way) stays out. The per-feature top 3 the script
+   also prints is material for the 💡 line only.
 5. **💡 One or two sentences** for the whole domain, saying what the lines above cannot
    say on their own: which feature drives the group's change, a streak of quarters up or
    down, users and volume moving apart (Jobs per User), one company carrying most of a

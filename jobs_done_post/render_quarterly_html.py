@@ -11,7 +11,7 @@ articles look like every other page Claude publishes on the intranet.
 
 Every figure comes from the Markdown article, which check_quarterly_article.py has
 already traced to the data: this script only lays it out (cards for the overview, one
-block per domain group with its features and its top 3 companies). It adds no figure of
+block per domain group with its features and its biggest movers by company). It adds no figure of
 its own, except the bar widths, drawn from the shares the article prints. Above the
 overview, it adds a folded glossary: the metrics, and what one Job Done is for each
 feature of the scope sentence.
@@ -27,7 +27,7 @@ import sys
 from pathlib import Path
 
 from jobs_done_common import (EMOJI, FEATURE_DEFINITIONS, GLOSSARY_METRICS_QUARTERLY, SCOPE,
-                              SCOPE_GROUP)
+                              SCOPE_GROUP, overview_lines, KPI_EMOJI)
 
 # The LumApps brand shell, copied from the artifact skill of the lumapps-utils plugin
 # (skills/artifact/assets/shell.css, plugin 0.5.0). Every selector starts with .lwa, so
@@ -76,6 +76,17 @@ JD_CSS = """\
 .lwa{--jd-down:#F4A396}
 .lwa .lwa-tag--down{background:var(--jd-down)}
 .lwa .jd-hl > div > ul{margin:6px 0 0; padding-left:20px; font-size:15px}
+/* biggest movers: a light green or coral edge per side, the leading feature under the name */
+.lwa tr.jd-sub td{background:#F7F7F7 !important; font-size:13px; font-weight:700; color:var(--ink-soft) !important; padding-top:7px !important; padding-bottom:7px !important}
+.lwa tr.jd-gain td:first-child{box-shadow:inset 4px 0 0 #DCEFA8}
+.lwa tr.jd-loss td:first-child{box-shadow:inset 4px 0 0 #F8C9C2}
+.lwa .jd-led{display:block; font-size:13px; color:var(--ink-soft)}
+/* the same air before each section and each tribe, the first tribe excepted */
+.lwa .lwa-body > h2{margin-top:56px}   /* the shell zeroes the top margin of every body child */
+.lwa h3.jd-tribe{font-size:21px; margin:56px 0 8px}
+.lwa h2 + h3.jd-tribe{margin-top:12px}
+/* an overview value with its unrounded figure as a tooltip */
+.lwa .jd-exact{text-decoration:underline dotted #BDBDBD; text-decoration-thickness:2px; text-underline-offset:6px}
 .lwa .jd-group{display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 12px; margin:0 0 12px}
 .lwa .jd-group .jd-v{font-size:17px; font-weight:900; font-variant-numeric:tabular-nums}
 .lwa .jd-muted{color:var(--ink-soft); font-size:14px}
@@ -122,13 +133,16 @@ JD_CSS = """\
 }
 """
 
-KPI_EMOJI = ("✅", "👥", "🔁", "📈", "🎯")
 CARD_COLOURS = ("yellow", "blue", "green", "purple", "pink")
 # An overview KPI line, as overview_lines() in jobs_done_common.py writes it.
 KPI_LINE = re.compile(r"^(\S+) (.+?): (\S+) \((.+) (MoM|QoQ)\)$")
 GROUP_LINE = re.compile(r"^- Jobs Done: (\S+) \((\S+|flat) QoQ\), ([\d.]+)% of all Jobs Done$")
 FEATURE_LINE = re.compile(r"^- (\S+)\s+\*\*([^*]+)\*\*: (\S+) \(([^)]*?)(?: QoQ)?\), ([\d.]+)% of the tribe$")
-COMPANY_LINE = re.compile(r"^(\d)\.\s+(.+), (\S+) \(([\d.]+)% of .+ Jobs Done\)$")
+# A company of a tribe's biggest movers, as mover_line() in prepare_quarterly.py writes it.
+MOVER_LINE = re.compile(r"^(\d)\.\s+(.+?), ([+-]\S+) Jobs Done \((.+?)(?: QoQ)?\)"
+                        r"(?:, led by (.+) \(([+-]\S+)\))?$")
+MOVER_LABELS = {"Companies gaining the most Jobs Done:": ("▲ Gaining the most", "gain"),
+                "Companies losing the most Jobs Done:": ("▼ Losing the most", "loss")}
 CHANGE = re.compile(r"([+-]\d[\d.]*%|\bflat\b)(?= QoQ)")
 # Introductions stay plain text: the change tags are for cards, lists and tables.
 NO_CHIPS = re.compile(r"(?!)")
@@ -245,12 +259,30 @@ def render_glossary(tribes: list[tuple[str, list[str]]], metrics: list[tuple[str
             f'</div></details>')
 
 
-def render_kpis(lines: list[str], subtitles: dict[str, str]) -> str:
+def exact_values(lines: list[str], cur: dict | None, prev: dict | None, unit: str) -> dict:
+    """{KPI line: its unrounded value}, for the tooltips on the overview cards.
+
+    Read from the CSVs the check traced the article to. A line the data no longer
+    rebuilds to the letter (the data was fetched again since) gets no tooltip.
+    """
+    if not cur:
+        return {}
+    exact = {"Jobs Done": f"{cur['jd']:,.0f}", "Users with a Job Done": f"{cur['users']:,.0f}",
+             "Jobs per User": f"{cur['jpu']:.2f}", "MAU": f"{cur['mau']:,.0f}",
+             "Reach": f"{cur['reach']:.2f}%"}
+    written = {l.strip() for l in lines}
+    return {line: exact[line.split(":")[0].split(" ", 1)[1]]
+            for line in overview_lines(cur, prev, unit) if line in written}
+
+
+def render_kpis(lines: list[str], subtitles: dict[str, str], exact: dict | None = None) -> str:
     """The five KPI lines of an overview as cards, the other lines as paragraphs.
 
     Five cards of one size on one row, in the dashboard's order. On a narrow block, the
     three Jobs Done KPIs, then MAU and Reach centred; on a phone, one per row. `subtitles` maps each KPI name to the small line under its value.
+    `exact` maps a KPI line to its unrounded value, shown as a tooltip on the value.
     """
+    exact = exact or {}
     cards, rest = [], []
     for line in (l.strip() for l in lines):
         if not line or line == "---":
@@ -259,8 +291,10 @@ def render_kpis(lines: list[str], subtitles: dict[str, str]) -> str:
         if m and m.group(2) in subtitles:
             emoji, name, value, chg, unit = m.groups()
             colour = CARD_COLOURS[len(cards) % len(CARD_COLOURS)]
+            tip = (f' class="jd-v jd-exact" title="{html.escape(exact[line])}"' if line in exact
+                   else ' class="jd-v"')
             cards.append(f'<div style="--c:var(--{colour})"><b>{html.escape(emoji)} {html.escape(name)}</b>'
-                         f'<span class="jd-v">{html.escape(value)}</span>'
+                         f'<span{tip}>{html.escape(value)}</span>'
                          f'<span>{chip(chg)} {unit}</span><span>{subtitles[name]}</span></div>')
         elif line.startswith(KPI_EMOJI):
             raise Unreadable(f"overview line: {line!r}")
@@ -305,16 +339,20 @@ def render_highlights(sections: list[tuple[str, list[str]]]) -> str:
 
 def render_group(name: str, lines: list[str]) -> str:
     jd = change = share = None
-    features, companies, insight = [], [], ""
+    features, movers, insight = [], {}, ""
+    side = None
     for line in (l.strip() for l in lines):
-        if not line or line == "---" or line in ("Features by Jobs Done:", "Top 3 companies by Jobs Done:"):
+        if not line or line == "---" or line == "Features by Jobs Done:":
             continue
-        if m := GROUP_LINE.match(line):
+        if line in MOVER_LABELS:
+            side = MOVER_LABELS[line]
+            movers[side] = []
+        elif m := GROUP_LINE.match(line):
             jd, change, share = m.group(1), m.group(2), m.group(3)
         elif m := FEATURE_LINE.match(line):
             features.append(m.groups())
-        elif m := COMPANY_LINE.match(line):
-            companies.append(m.groups())
+        elif side and (m := MOVER_LINE.match(line)):
+            movers[side].append(m.groups())
         elif line.startswith("💡"):
             insight = line
         else:
@@ -326,16 +364,24 @@ def render_group(name: str, lines: list[str]) -> str:
         f'<tr><td>{html.escape(emoji)} {html.escape(feat)}</td><td class="jd-num">{html.escape(v)}</td>'
         f'<td class="jd-num">{chip(c)}</td>{share_cell(sh)}</tr>'
         for emoji, feat, v, c, sh in features)
-    top = "".join(
-        f'<tr><td>{rank}. {html.escape(who)}</td><td class="jd-num">{html.escape(v)}</td>{share_cell(sh)}</tr>'
-        for rank, who, v, sh in companies)
-    return (f"<h3>{inline(name)}</h3>"
+    def mover(kind, rank, who, v, q, feature, feature_change):
+        led = (f'<span class="jd-led">led by {html.escape(EMOJI.get(feature, ""))} '
+               f"{html.escape(feature)} {html.escape(feature_change)}</span>" if feature else "")
+        return (f'<tr class="jd-{kind}"><td>{rank}. {html.escape(who)}{led}</td>'
+                f'<td class="jd-num">{html.escape(v)}</td>'
+                f'<td class="jd-num">{chip(q) if q[0] in "+-" else html.escape(q)}</td></tr>')
+    moves = "".join(
+        f'<tr class="jd-sub"><td colspan="3">{title}</td></tr>'
+        + "".join(mover(kind, *row) for row in rows)
+        for (title, kind), rows in movers.items())
+    return (f'<h3 class="jd-tribe">{inline(name)}</h3>'
             f'<div class="jd-group"><span class="jd-v">{html.escape(jd)}</span> Jobs Done '
             f'{chip(change)} <span class="jd-muted">QoQ · {share}% of all Jobs Done</span></div>'
             f'<table><tr><th>Feature</th><th class="jd-num">Jobs Done</th><th class="jd-num">QoQ</th>'
             f"<th>Share of the tribe</th></tr>{rows}</table>"
-            + (f'<table><tr><th>Top 3 companies</th><th class="jd-num">Jobs Done</th>'
-               f"<th>Share of the tribe</th></tr>{top}</table>" if companies else "")
+            + (f'<table class="jd-movers"><tr><th>Biggest movers by company</th>'
+               f'<th class="jd-num">Change</th><th class="jd-num">QoQ</th></tr>{moves}</table>'
+               if movers else "")
             + (f'<div class="lwa-callout"><p>{inline(insight)}</p></div>' if insight else ""))
 
 
@@ -352,6 +398,17 @@ def render_domains(lines: list[str]) -> str:
             + "".join(prose(p) for p in paragraphs(intro) if p not in scope)
             + "".join(render_group(g, ls) for g, ls in groups)
             + (prose(footer) if footer else "") + "".join(prose(p) for p in scope))
+
+
+def quarter_exact(q: str, lines: list[str]) -> dict:
+    """The unrounded overview values of quarter `q` ("Q3 2026"), when its data is on file."""
+    import prepare_quarterly as pq
+    key = f"{q[3:]}-{q[:2]}"
+    if not pq.data_file("totals", key).exists():
+        return {}
+    totals = pq.read_totals(key)
+    return exact_values(lines, pq.quarter_kpis(totals, key),
+                        pq.quarter_kpis(totals, pq.shift_quarter(key, -1)), "QoQ")
 
 
 def render(text: str, slug: str = "jobs-done") -> str:
@@ -378,7 +435,8 @@ def render(text: str, slug: str = "jobs-done") -> str:
         if name == "High level overview":
             hl = split_on(sec, "### ")
             before = sec[:next((i for i, l in enumerate(sec) if l.startswith("### ")), len(sec))]
-            body.append(f"<h2>High level overview</h2>{render_kpis(before, subtitles)}"
+            body.append(f"<h2>High level overview</h2>"
+                        f"{render_kpis(before, subtitles, quarter_exact(q, before))}"
                         f"{render_highlights(hl)}")
         elif name == DOMAINS_SECTION:
             body.append(render_domains(sec))

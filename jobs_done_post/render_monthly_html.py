@@ -23,7 +23,7 @@ import sys
 from pathlib import Path
 
 from jobs_done_common import GLOSSARY_METRICS
-from render_quarterly_html import (ARTICLES_DIR, NO_CHIPS, Unreadable, paragraphs, prose, render_glossary,
+from render_quarterly_html import (ARTICLES_DIR, NO_CHIPS, Unreadable, exact_values, paragraphs, prose, render_glossary,
                                    render_kpis, scope_tribes, split_on, with_chips, wrap)
 
 FEATURES_SECTION = "Features of the month"
@@ -52,6 +52,18 @@ def render_features(lines: list[str]) -> str:
             f'<div class="lwa-steps">{"".join(cards)}</div>{"".join(foot)}{"".join(scope)}')
 
 
+def month_exact(m: str, lines: list[str]) -> dict:
+    """The unrounded overview values of month `m` ("October 2026"), when its data is on file."""
+    import prepare_data as pd
+    from datetime import datetime
+    key = datetime.strptime(m, "%B %Y").strftime("%Y-%m")
+    if not pd.data_file("totals", key).exists():
+        return {}
+    totals = pd.read_totals(key)
+    return exact_values(lines, pd.month_kpis(totals, key),
+                        pd.month_kpis(totals, pd.adj_month(key, -1)), "MoM")
+
+
 def render(text: str, slug: str = "jobs-done") -> str:
     lines = text.splitlines()
     title = next((l[2:].strip() for l in lines if l.startswith("# ")), None)
@@ -73,7 +85,8 @@ def render(text: str, slug: str = "jobs-done") -> str:
                  "Reach": "users with a Job Done over 28 days / MAU"}
     for name, sec in sections:
         if name == "High level overview":
-            body.append(f"<h2>High level overview</h2>{render_kpis(sec, subtitles)}")
+            body.append(f"<h2>High level overview</h2>"
+                        f"{render_kpis(sec, subtitles, month_exact(m, sec))}")
         elif name == FEATURES_SECTION:
             body.append(render_features(sec))
         else:

@@ -27,7 +27,7 @@ import sys
 from pathlib import Path
 
 import prepare_data
-from jobs_done_common import (EMOJI, FRESH_HOURS, GO_LIVE, SCOPE, SCOPE_GROUP, YOY, check_numbers,
+from jobs_done_common import (EMOJI, FRESH_HOURS, GO_LIVE, KPI_EMOJI, SCOPE, YOY, check_numbers, check_scope,
                               check_overview, check_volume, check_wording, dashboard_line,
                               overview_lines, pct, stale)
 from prepare_data import adj_month, data_file, month_kpis, read_features, read_totals
@@ -123,29 +123,6 @@ def expected_scope(history, month):
     return {g: [n for _, n in sorted(v, reverse=True)] for g, v in scope.items()}
 
 
-def check_scope(sec, want, month, failures):
-    m = SCOPE.search(sec)
-    if not m:
-        failures.append("features: open on the scope sentence 'Jobs Done covers <Domain> "
-                        "(<Feature>, ...)'")
-        return
-    written = {d: [f.strip() for f in fs.split(",") if f.strip()]
-               for d, fs in SCOPE_GROUP.findall(m.group(1))}
-    for d in sorted(want.keys() - written.keys()):
-        failures.append(f"scope sentence misses the domain {d} ({', '.join(want[d])})")
-    for d in sorted(written.keys() - want.keys()):
-        failures.append(f"scope sentence lists {d}, which is not tracked in {month}")
-    for d in sorted(want.keys() & written.keys()):
-        for f in sorted(set(want[d]) - set(written[d])):
-            failures.append(f"scope sentence misses {f} under {d}")
-        for f in sorted(set(written[d]) - set(want[d])):
-            failures.append(f"scope sentence lists {f} under {d}, which is not tracked in {month}")
-        listed = [f for f in written[d] if f in want[d]]
-        if listed != [f for f in want[d] if f in listed]:
-            failures.append(f"scope sentence: list the features of {d} from largest to "
-                            f"smallest: {', '.join(want[d])}")
-
-
 def main():
     if len(sys.argv) != 2:
         sys.exit("usage: check_article.py data/drafts/article_YYYY-MM.md")
@@ -186,7 +163,7 @@ def main():
     # ---- overview --------------------------------------------------------
     overview = text.split("## High level overview", 1)[-1].split(FEATURES_SECTION)[0]
     check_overview(overview, overview_lines(cur, prev, "MoM"), failures)
-    prose = "\n".join(l for l in overview.splitlines() if not l.strip().startswith(("✅", "👥", "🔁", "📈", "🎯")))
+    prose = "\n".join(l for l in overview.splitlines() if not l.strip().startswith(KPI_EMOJI))
     check_numbers(prose, total_values(totals, month), "overview", failures)
 
     # ---- features --------------------------------------------------------

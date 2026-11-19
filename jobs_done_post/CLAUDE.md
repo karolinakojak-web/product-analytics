@@ -18,7 +18,7 @@ and only its HTML rendering in `articles/` is the deliverable. A **Claude Code h
 the right check on every save** of `data/drafts/article_*.md` or
 `data/drafts/quarterly_*.md`, configured in `.claude/settings.json` at the repo root.
 What follows describes the monthly check; the quarterly one adds the shape of the article (two highlight lists, one block per domain group, one line per
-feature in size order, the group's top 3 companies in order). Once a check passes, the
+feature in size order, the group's biggest movers by company as the script prints them). Once a check passes, the
 hook renders the article as HTML: `render_monthly_html.py` for a monthly one,
 `render_quarterly_html.py` for a quarterly one. Nothing to remember and nothing to
 launch: write the article, the check runs, failures come back as an error. It can also
@@ -185,7 +185,7 @@ compare with the previous month or quarter. A calendar month has 28 to 31 days, 
 month with more days, or more working days, has more Jobs Done for that reason alone:
 say so when it explains a move. There is no YoY: the Overview tab shows none.
 
-**Trend classification** (from 12-month MoM series):
+**Trend classification** (from the MoM series of the last 6 months):
 - `growing` — avg MoM ≥ +3%
 - `declining` — avg MoM ≤ -3%
 - `stable` — avg MoM between -3% and +3%, low variance
@@ -199,8 +199,8 @@ say so when it explains a move. There is no YoY: the Overview tab shows none.
 - **Volume up + Users down** → fewer people doing more — intensity signal
 - **Volume down + Jobs per User flat** → fewer users, same depth per user
 - **Volume down + Jobs per User down** → most concerning — users leaving and disengaging
-- **Reach > 85%** → the tracked action is performed by most of the active user base
-- **Reach < 30%** → the tracked action reaches a small share of active users
+- **Reach > 85%** → the tracked action is performed by most of the MAU it is measured on
+- **Reach < 30%** → the tracked action reaches a small share of that MAU
 
   Both read as adoption of the **one action Jobs Done measures**, not of the feature as a
   whole. Do not turn them into "widely adopted" or "niche feature" in the article. A
@@ -211,17 +211,19 @@ say so when it explains a move. There is no YoY: the Overview tab shows none.
 
 ## Known permanent data limitations
 
-- **Customer-level breakdowns** are only fetched for the quarterly top 3 companies
-  (`data/quarterly/companies_*.csv` per feature, `group_companies_*.csv` per domain
-  group).
+- **Customer-level breakdowns** are only fetched for the quarterly article: the top
+  organizations per feature (`data/quarterly/companies_*.csv`, for the 💡 lines) and the
+  biggest movers per domain group, the organizations whose Jobs Done rose and fell the
+  most against the quarter before (`group_movers_*.csv`).
 - **Companies are organizations, never Salesforce accounts.** `prepare_quarterly.py`
   ranks on `organization_id` and only then labels each organization with
-  `organizations.account_name` and its slug. Grouping by account would be wrong: in
-  Q3 2026 the account named "LumApps" held 35 organizations with Jobs Done, many of
-  them customers. The script reports an organization of a top 3 that sits under that account,
-  or that has no account name, as *COMPANY DIRECTORY ISSUES*. It also checks that the
-  company join does not inflate the total (LumApps' old source doubled a large
-  customer's Videos Jobs Done in Q2 2026 that way). Report such issues upstream.
+  `organizations.account_name` and its slug. Grouping by account would be wrong: in Q3
+  2026 the account named "LumApps" held 35 organizations with Jobs Done, many of them
+  customers. The script reports an organization of a top 3 or of the movers that sits
+  under that account, or that has no account name, as *COMPANY DIRECTORY ISSUES*. It
+  also checks that the company join does not inflate the total (LumApps' old source
+  doubled a large customer's Videos Jobs Done in Q2 2026 that way). Report such issues
+  upstream.
 - **Users and MAU cannot be summed across features or domain groups.** They count
   *unique* users, so a user active in two domains is counted once at total level but
   twice if the rows are added up. Totals are queried at total grain. Only Jobs Done

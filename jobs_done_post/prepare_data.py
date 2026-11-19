@@ -51,10 +51,10 @@ FEATURE_HEADERS = ["Calendar Month", "Product Domain Group", "Feature", "Jobs Do
                    "Jobs Done Users", "Jobs Done Users 28d", "MAU"]
 AGENT_HEADERS = ["Calendar Month", "Agent", "Jobs Done", "Jobs Done Users", "Organizations"]
 
-# 13 months are reported, the report month and the twelve before it. Two more are
-# fetched so the first reported month has its MoM, with a month of slack.
-TIME_FRAME = "15 month ago for 15 month"
-REPORTED_MONTHS = 13
+# 6 months are reported, the report month and the five before it (two quarters), and
+# one more is fetched so the first of them has its MoM. No YoY, so no longer window.
+TIME_FRAME = "7 month ago for 7 month"
+REPORTED_MONTHS = 6
 
 
 def data_file(kind: str, month: str) -> Path:
@@ -103,7 +103,7 @@ def _write(path: Path, headers: list[str], rows: list[dict]) -> None:
 
 def _calendar() -> dict:
     """Every day of the months: Jobs Done and users over the calendar month."""
-    return {f"{P}.calendar_date": TIME_FRAME}
+    return {f"{P}.calendar_date": TIME_FRAME, f"{P}.day_selection": "any^_day"}
 
 
 def _month_ends() -> dict:
@@ -247,7 +247,7 @@ def print_overview(totals: dict, month: str) -> None:
     for line in overview_lines(cur, prev, "MoM"):
         print(f"  {line}")
 
-    print(f"\n{'=' * 80}\nBOTH PLATFORMS — 13-MONTH TREND\n{'=' * 80}")
+    print(f"\n{'=' * 80}\nBOTH PLATFORMS — 6-MONTH TREND\n{'=' * 80}")
     print(f"  {'Month':<9} {'Jobs Done':>10} {'MoM':>7} {'Users':>9} {'MoM':>7} "
           f"{'Jobs/User':>9} {'MAU':>9} {'MoM':>7} {'Reach':>7}")
     for m in sorted(totals)[-REPORTED_MONTHS:]:
@@ -303,7 +303,7 @@ def feature_analytics(history: dict, report_month: str) -> list[dict]:
             "consecutive": consecutive_direction(mom_series),
             "avg_mom": round(mean(mom_series), 1) if mom_series else None,
             "months_tracked": len(by_month),
-            "jd_12m_peak_month": max(recent, key=lambda m: by_month[m]["jd"]),
+            "peak_month": max(recent, key=lambda m: by_month[m]["jd"]),
         })
     return sorted(results, key=lambda r: r["jd"], reverse=True)
 
@@ -448,14 +448,14 @@ def print_agents_section(month: str, features: list[dict]) -> None:
             print(line(r))
 
 
-def print_yearly_trends(features: list[dict]) -> None:
-    """Summary of the 12-month trajectory per feature."""
-    print(f"\n{'=' * 80}\nYEARLY TRENDS (12-month trajectory)\n{'=' * 80}")
+def print_trends(features: list[dict]) -> None:
+    """Summary of the 6-month trajectory per feature."""
+    print(f"\n{'=' * 80}\n6-MONTH TRENDS\n{'=' * 80}")
     print(f"  {'Feature':<18} {'Group':<32} {'Trend':<12} {'Avg MoM':>8} {'Peak month':<10} Consecutive")
     print("  " + "-" * 100)
     for r in features:
         print(f"  {r['feature']:<18} {r['domain_group']:<32} {r['trend']:<12} "
-              f"{fmt_change(r['avg_mom']):>8} {r['jd_12m_peak_month']:<10} {r['consecutive']}")
+              f"{fmt_change(r['avg_mom']):>8} {r['peak_month']:<10} {r['consecutive']}")
 
 
 # ---------------------------------------------------------------------------
@@ -528,7 +528,7 @@ def main():
     print_feature_section(features, total_jd)
     print_movers(features, total_jd, total_jd - prev.get("jd", 0))
     print_agents_section(month, features)
-    print_yearly_trends(features)
+    print_trends(features)
 
     print_volume_alerts(volume_alerts(month))
 

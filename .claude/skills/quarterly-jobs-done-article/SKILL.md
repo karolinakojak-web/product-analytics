@@ -1,6 +1,6 @@
 ---
 name: quarterly-jobs-done-article
-description: Write the quarterly Jobs Done article covering LumApps and Beekeeper combined, with one block per domain group (its features and its top 3 companies), from fresh Looker data on the consolidated dashboard's explore, check it against the data, and render it as the HTML block for the intranet.
+description: Write the quarterly Jobs Done article covering LumApps and Beekeeper combined, with one block per domain group (its features and its biggest movers by company), from fresh Looker data on the consolidated dashboard's explore, check it against the data, and render it as the HTML block for the intranet.
 argument-hint: "[YYYY-QN] [editorial note]"
 disable-model-invocation: true
 allowed-tools: Bash(python3 jobs_done_post/prepare_quarterly.py), Bash(python3 jobs_done_post/prepare_quarterly.py *), Bash(python3 jobs_done_post/check_quarterly_article.py *), Bash(python3 jobs_done_post/render_quarterly_html.py *)
@@ -33,7 +33,7 @@ see *Where the data comes from* in `jobs_done_post/CLAUDE.md`.
 
    It pulls the quarter and the four before it into `jobs_done_post/data/quarterly/`, then
    prints the five overview lines to copy as they are, the totals quarter by quarter,
-   each domain group with its top 3 companies, every feature by domain group with its
+   each domain group with its biggest movers by company, every feature by domain group with its
    QoQ, users, Jobs per User, streak and top 3 companies, the features not live yet in
    the quarter, and the *HIGHLIGHTS* candidates for the two highlight sections, with the
    features set aside because their QoQ is not like for like, and the *STEPS AND SPIKES*
@@ -93,4 +93,4 @@ see *Where the data comes from* in `jobs_done_post/CLAUDE.md`.
 5. **Hand it over.** Give the path of the HTML (the deliverable, to paste as an HTML
    widget), never the draft, then list the check's warnings (quantity words) with
    the figures behind each, and remind the user that the article names customers in the
-   top 3 lists.
+   biggest movers lists.

@@ -15,7 +15,8 @@ Writes to data/quarterly/, one file per kind:
   totals_YYYY-QN.csv           both platforms together, last QUARTERS quarters
   features_YYYY-QN.csv         domain group x feature, same quarters
   companies_YYYY-QN.csv        top organizations per feature, report quarter only
-  group_companies_YYYY-QN.csv  top organizations per domain group, same quarter
+  group_movers_YYYY-QN.csv     per domain group, the organizations whose Jobs Done rose
+                               and fell the most against the quarter before
   feature_weeks_YYYY-QN.csv    weekly Jobs Done per feature, report quarter and the one
                                before, to catch steps and spikes
   anomaly_drivers_YYYY-QN.csv  the organizations behind each step or spike
@@ -47,7 +48,7 @@ from jobs_done_common import (GO_LIVE, LOOKER, QUARTERLY_EXCLUDED_ORGANIZATIONS,
 DATA_DIR = Path(__file__).parent / "data" / "quarterly"
 
 QUARTERS = 5          # the report quarter and the four before it
-TOP_COMPANIES = 5     # kept per feature and per domain group; the article quotes the top 3
+TOP_COMPANIES = 5     # kept per feature and per list of movers; the article quotes 3
 
 P = LOOKER["prefix"]
 # Calendar quarter: the daily Jobs Done summed, the users counted once over the quarter.
@@ -66,7 +67,8 @@ CATCH_ALL_ACCOUNT = "LumApps"
 TOTAL_HEADERS = ["Quarter", "Jobs Done", "Jobs Done Users", "Jobs Done Users 28d", "MAU"]
 FEATURE_HEADERS = ["Quarter", "Product Domain Group", "Feature", "Jobs Done", "Jobs Done Users"]
 COMPANY_HEADERS = ["Product Domain Group", "Feature", "Rank", "Company", "Slug", "Jobs Done"]
-GROUP_COMPANY_HEADERS = ["Product Domain Group", "Rank", "Company", "Slug", "Jobs Done"]
+MOVER_HEADERS = ["Product Domain Group", "Direction", "Rank", "Company", "Slug", "Jobs Done",
+                 "Previous", "Change", "Led by", "Led by change"]
 WEEK_HEADERS = ["Week", "Product Domain Group", "Feature", "Jobs Done"]
 INTEGRITY_HEADERS = ["Check", "Feature", "Organization", "Value", "Expected"]
 DRIVER_HEADERS = ["Feature", "Kind", "Week", "Rank", "Company", "Slug", "Change", "Share of change"]
@@ -207,23 +209,25 @@ def _anomaly_drivers(sdk, cfg: dict, weeks: list[dict]) -> list[dict]:
     return out
 
 
-def _ranked(rows: list[dict], names: dict, integrity: list, label: str) -> list[tuple]:
-    """The top named organizations of a shortlist, with the problems on the way.
+def _ranked(rows: list[dict], names: dict, integrity: list, label: str,
+            key: str = JD) -> list[tuple]:
+    """The top named organizations of a shortlist, ranked on `key`, with the problems on
+    the way.
 
     An organization with no name ahead of the third named one would have been in the
     top 3: say so rather than drop it quietly. One under the catch-all account would
     show a name that is not its own: keep it, and report it.
     """
     named = [r for r in rows if r[ORG] in names][:TOP_COMPANIES]
-    cutoff = named[2][JD] if len(named) >= 3 else 0
+    cutoff = abs(named[2][key]) if len(named) >= 3 else 0
     for r in rows:
-        if r[ORG] not in names and r[JD] >= cutoff:
+        if r[ORG] not in names and abs(r[key]) >= cutoff:
             integrity.append({"Check": "unnamed organization in a top 3", "Feature": label,
-                              "Organization": r[ORG], "Value": r[JD], "Expected": ""})
+                              "Organization": r[ORG], "Value": r[key], "Expected": ""})
     for r in named[:3]:
         if names[r[ORG]][0] == CATCH_ALL_ACCOUNT:
             integrity.append({"Check": "catch-all account in a top 3", "Feature": label,
-                              "Organization": names[r[ORG]][1] or r[ORG], "Value": r[JD],
+                              "Organization": names[r[ORG]][1] or r[ORG], "Value": r[key],
                               "Expected": ""})
     return [(i, r, names[r[ORG]]) for i, r in enumerate(named, 1)]
 
@@ -249,9 +253,15 @@ def fetch(quarter: str) -> None:
              "Jobs Done Users 28d": ends.get(r[QDIM], {}).get(USERS_28D),
              "MAU": ends.get(r[QDIM], {}).get(MAU)} for r in totals])
 
+    # Feature users only for the two quarters the article compares: the older quarters
+    # only feed the streaks, which read Jobs Done.
+    users = {(r[QDIM], r[GROUP], r[FEATURE]): r[USERS]
+             for q in (shift_quarter(quarter, -1), quarter)
+             for r in run_features(sdk, QDIM, [USERS], every_day(q, q), cfg=cfg)}
     features = [{"Quarter": looker_quarter(r[QDIM]), "Product Domain Group": r[GROUP],
-                 "Feature": r[FEATURE], "Jobs Done": r[JD], "Jobs Done Users": r[USERS]}
-                for q in span for r in run_features(sdk, QDIM, [JD, USERS], every_day(q, q), cfg=cfg)]
+                 "Feature": r[FEATURE], "Jobs Done": r[JD],
+                 "Jobs Done Users": users.get((r[QDIM], r[GROUP], r[FEATURE]))}
+                for r in run_features(sdk, QDIM, [JD], every_day(first, quarter), cfg=cfg)]
     _write(data_file("features", quarter), FEATURE_HEADERS, features)
 
     # Organizations are ranked on organization_id, straight from the fact table, and
@@ -266,30 +276,57 @@ def fetch(quarter: str) -> None:
     # a few spares per feature, in case some of the top organizations have no name
     shortlist = {k: sorted(rows, key=lambda x: -x[JD])[:TOP_COMPANIES + 5]
                  for k, rows in ranked.items()}
-    # The article ranks organizations per domain group too: each organization's Jobs
-    # Done summed over every feature of the group, from the same rows.
+    # The article shows, per domain group, the organizations whose Jobs Done moved the
+    # most against the quarter before: each organization's Jobs Done summed over every
+    # feature of the group, this quarter and the one before.
+    before = run_features(sdk, "", [JD], every_day(shift_quarter(quarter, -1),
+                                                   shift_quarter(quarter, -1)),
+                          (ORG,), limit="50000", cfg=cfg)
     by_group: dict[str, dict] = {}
-    for (group, _), rows in ranked.items():
+    by_feature: dict[tuple, dict] = {}     # (group, organization) -> {feature: [now, before]}
+    for rows, slot in ((list(r for rs in ranked.values() for r in rs), 0), (before, 1)):
         for r in rows:
-            by_group.setdefault(group, {}).setdefault(r[ORG], 0)
-            by_group[group][r[ORG]] += r[JD]
-    group_shortlist = {g: sorted(({ORG: t, JD: v} for t, v in ts.items()),
-                                 key=lambda x: -x[JD])[:TOP_COMPANIES + 5]
-                       for g, ts in by_group.items()}
-    names = _company_names(sdk, cfg, in_quarter,
-                           {r[ORG] for rows in (*shortlist.values(), *group_shortlist.values())
+            if r.get(JD):
+                by_group.setdefault(r[GROUP], {}).setdefault(r[ORG], [0, 0])[slot] += r[JD]
+                by_feature.setdefault((r[GROUP], r[ORG]), {}).setdefault(r[FEATURE], [0, 0])[slot] += r[JD]
+    features_of = {g: {f for (gg, _), fs in by_feature.items() if gg == g for f in fs}
+                   for g in by_group}
+
+    def led_by(g, org, change):
+        """The feature whose own change goes furthest the organization's way, unless the
+        group has a single feature."""
+        if len(features_of[g]) < 2:
+            return None, None
+        moves = {f: now - was for f, (now, was) in by_feature[(g, org)].items()}
+        f = max(moves, key=lambda f: moves[f] if change > 0 else -moves[f])
+        return f, moves[f]
+
+    movers = {}
+    for g, orgs in by_group.items():
+        moves = [{ORG: t, JD: cur, "prev": prev, "change": cur - prev}
+                 for t, (cur, prev) in orgs.items()]
+        movers[(g, "gain")] = sorted((m for m in moves if m["change"] > 0),
+                                     key=lambda m: -m["change"])[:TOP_COMPANIES + 5]
+        movers[(g, "loss")] = sorted((m for m in moves if m["change"] < 0),
+                                     key=lambda m: m["change"])[:TOP_COMPANIES + 5]
+    names = _company_names(sdk, cfg, every_day(shift_quarter(quarter, -1), quarter),
+                           {r[ORG] for rows in (*shortlist.values(), *movers.values())
                             for r in rows})
-    companies, group_companies, integrity = [], [], []
+    companies, group_movers, integrity = [], [], []
     for (group, feature), rows in shortlist.items():
         for i, r, (name, slug) in _ranked(rows, names, integrity, feature):
             companies.append({"Product Domain Group": group, "Feature": feature, "Rank": i,
                               "Company": name, "Slug": slug, "Jobs Done": r[JD]})
-    for group, rows in group_shortlist.items():
-        for i, r, (name, slug) in _ranked(rows, names, integrity, group):
-            group_companies.append({"Product Domain Group": group, "Rank": i, "Company": name,
-                                    "Slug": slug, "Jobs Done": r[JD]})
+    for (group, direction), rows in movers.items():
+        label = f"{group} {'gainers' if direction == 'gain' else 'losers'}"
+        for i, r, (name, slug) in _ranked(rows, names, integrity, label, key="change"):
+            feature, feature_change = led_by(group, r[ORG], r["change"])
+            group_movers.append({"Product Domain Group": group, "Direction": direction,
+                                 "Rank": i, "Company": name, "Slug": slug, "Jobs Done": r[JD],
+                                 "Previous": r["prev"], "Change": r["change"],
+                                 "Led by": feature, "Led by change": feature_change})
     _write(data_file("companies", quarter), COMPANY_HEADERS, companies)
-    _write(data_file("group_companies", quarter), GROUP_COMPANY_HEADERS, group_companies)
+    _write(data_file("group_movers", quarter), MOVER_HEADERS, group_movers)
 
     # The company join must not change the total: summed through it, the quarter's
     # Jobs Done must equal the plain total. More means the directory holds several
@@ -357,15 +394,35 @@ def read_features(quarter: str) -> dict[tuple, dict]:
     return out
 
 
+GAINERS_LABEL = "Companies gaining the most Jobs Done:"
+LOSERS_LABEL = "Companies losing the most Jobs Done:"
+
+
+def mover_line(c: dict) -> str:
+    """One company of a tribe's biggest movers, as the article writes it:
+    "1. Company A (company-a), +1.20M Jobs Done (+15.3% QoQ), led by Content (+1.10M)"."""
+    cur, prev, chg = num(c["Jobs Done"]), num(c["Previous"]), num(c["Change"])
+    who = f"{c['Company']} ({c['Slug']})" if c["Slug"] else c["Company"]
+    qoq = f"{fmt_change(pct(cur, prev))} QoQ" if prev else "new this quarter"
+    line = f"{c['Rank']}. {who}, {signed_level(chg)} Jobs Done ({qoq})"
+    if c.get("Led by"):
+        line += f", led by {c['Led by']} ({signed_level(num(c['Led by change']))})"
+    return line
+
+
+def signed_level(v: float) -> str:
+    return f"{'+' if v > 0 else '-'}{fmt_level(abs(v))}"
+
+
 def read_companies(quarter: str) -> tuple[dict, dict]:
-    """({(group, feature): rows}, {group: rows}), each list in rank order."""
+    """({(group, feature): rows}, {(group, "gain" or "loss"): rows}), in rank order."""
     companies: dict[tuple, list] = {}
     for r in _read(data_file("companies", quarter)):
         companies.setdefault((r["Product Domain Group"], r["Feature"]), []).append(r)
-    group_companies: dict[str, list] = {}
-    for r in _read(data_file("group_companies", quarter)):
-        group_companies.setdefault(r["Product Domain Group"], []).append(r)
-    return companies, group_companies
+    movers: dict[tuple, list] = {}
+    for r in _read(data_file("group_movers", quarter)):
+        movers.setdefault((r["Product Domain Group"], r["Direction"]), []).append(r)
+    return companies, movers
 
 
 def scope(history: dict, quarter: str) -> dict[str, list]:
@@ -416,7 +473,7 @@ def analyse(quarter: str) -> list[dict]:
     prev = shift_quarter(quarter, -1)
     totals = read_totals(quarter)
     history = read_features(quarter)
-    companies, group_companies = read_companies(quarter)
+    companies, movers = read_companies(quarter)
     if quarter not in totals:
         sys.exit(f"Error: {quarter} missing from the data. Re-run without --no-fetch.")
 
@@ -467,11 +524,13 @@ def analyse(quarter: str) -> list[dict]:
     for g in sorted(by_group, key=lambda g: -group_jd[g]):
         print(f"\n  [{g}]  {fmt_level(group_jd[g])} JD, {fmt_change(pct(group_jd[g], group_prev[g]))} QoQ, "
               f"{group_jd[g] / total_jd * 100:.1f}% of all Jobs Done")
-        print("    Top 3 companies of the group (these go in the article):")
-        for c in group_companies.get(g, [])[:3]:
-            slug = f" ({c['Slug']})" if c["Slug"] else ""
-            print(f"      ({c['Rank']}) {c['Company']}{slug}, {fmt_level(num(c['Jobs Done']))} "
-                  f"({num(c['Jobs Done']) / group_jd[g] * 100:.1f}% of {g} Jobs Done)")
+        print("    Biggest movers by company (these lines go in the article as they are):")
+        for direction, title in (("gain", GAINERS_LABEL), ("loss", LOSERS_LABEL)):
+            top = movers.get((g, direction), [])[:3]
+            if top:
+                print(f"      {title}")
+                for c in top:
+                    print(f"      {mover_line(c)}")
         print("    Features (top 3 companies of each, for the 💡 line only):")
         for r in sorted(by_group[g], key=lambda r: -r["jd"]):
             users = (f"{fmt_level(r['users'])} users ({fmt_change(r['users_qoq'])})" if r["users"]

@@ -34,7 +34,7 @@ data comes from* in `jobs_done_post/CLAUDE.md`.
    ```
 
    It pulls fresh data from Looker into `jobs_done_post/data/` and prints the analysis:
-   the five overview lines to copy as they are, the 13-month totals, the feature
+   the five overview lines to copy as they are, the 6-month totals, the feature
    breakdown by domain group with MoM, users, Jobs per User, Reach and trend, and the
    three ranked lists that decide what to write about. If it fails on credentials or a
    403, stop and point the user to the setup section of `jobs_done_post/README.md`. Do

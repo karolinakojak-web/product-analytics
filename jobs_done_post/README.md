@@ -12,7 +12,7 @@ a quarterly one. Both reproduce the figures of the consolidated Jobs Done dashbo
 | Draft (checked, not handed over) | `data/drafts/article_YYYY-MM.md` | `data/drafts/quarterly_YYYY-QN.md` |
 | Deliverable | `articles/article_YYYY-MM.html`, by `render_monthly_html.py` | `articles/quarterly_YYYY-QN.html`, by `render_quarterly_html.py` |
 | Period | the calendar month (MAU and Reach: the 28 days that end it) | the calendar quarter (MAU and Reach: the 28 days that end it) |
-| Shape | the five overview KPIs, then 5 features of the month | the five overview KPIs, two highlight lists, then one block per domain group: every feature, and the group's top 3 companies |
+| Shape | the five overview KPIs, then 5 features of the month | the five overview KPIs, two highlight lists, then one block per domain group: every feature, and the group's biggest movers by company |
 
 Both read the same Looker explore and share their writing rules
 (`writing-rules.md`) and their constants (`jobs_done_common.py`).
@@ -83,7 +83,7 @@ python3 prepare_data.py
 That pulls fresh data into `data/` and prints the analysis:
 
 - the five overview lines to copy as they are (Jobs Done, Users with a Job Done, Jobs
-  per User, MAU, Reach), then the totals over 13 months;
+  per User, MAU, Reach), then the totals over the last 6 months;
 - the feature breakdown by product domain group, both platforms together;
 - three ranked lists telling you what to write about: biggest moves of the month (each
   feature against its own previous month, in Jobs Done), strongest relative moves,
@@ -156,7 +156,9 @@ by MAU. Every change compares with the quarter before. The script fetches the re
 warns when the quarter is not over yet. Wait a day or two after the quarter ends so its
 last day has landed in Looker.
 
-The article names customers in each domain group's top 3. Organizations are ranked one
+The article names customers in each domain group's biggest movers: the three
+organizations whose Jobs Done rose the most against the quarter before, and the three
+that fell the most, ranked on the change in Jobs Done. Organizations are ranked one
 by one, never grouped by Salesforce account (one account named "LumApps" holds dozens of
 customer organizations), and labelled with their account name and their slug. It is
 meant for internal readers.
@@ -169,10 +171,11 @@ python3 check_article.py data/drafts/article_2026-10.md
 
 It verifies that the five overview lines are the dashboard's, to the digit, that every
 other figure in the article traces back to the CSVs, per-agent figures in the Agents
-paragraph included, and that the editorial rules hold (structure, banned wording, three
+paragraph included, and that the editorial rules hold (structure, banned wording, five
 feature paragraphs, emoji, no year-over-year). It also checks that the scope sentence
-lists exactly the domains and features tracked that month, leaving out features whose
-go-live month has not come yet (`GO_LIVE` in the script). The scope grows over time, so
+lists exactly the domains and features tracked that month, each domain's features from
+largest to smallest, leaving out features whose go-live month has not come yet
+(`GO_LIVE` in `jobs_done_common.py`). The scope grows over time, so
 this check catches a sentence copied from last month. Figures written without a unit,
 such as "164 Jobs Done" or "8 customers", are not checked.
 
@@ -239,7 +242,7 @@ jobs_done_post/
     ├── features_YYYY-MM.csv       domain group x feature
     ├── agents_YYYY-MM.csv         Agents, per agent (empty until AI & Search lands)
     ├── daily_volume_YYYY-MM.csv   daily Jobs Done per cell, for the volume checks
-    ├── quarterly/      {totals,features,companies,group_companies,daily_volume,...}_YYYY-QN.csv
+    ├── quarterly/      {totals,features,companies,group_movers,daily_volume,...}_YYYY-QN.csv
     └── drafts/         article_YYYY-MM.md, quarterly_YYYY-QN.md: the checked Markdown drafts
 
 .claude/skills/monthly-jobs-done-article/

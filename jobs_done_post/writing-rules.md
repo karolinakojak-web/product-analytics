@@ -24,7 +24,11 @@ The constants they rely on (emoji per feature, go-live months, banned wording) l
   reading the data, not for the article. "Content accounts for almost the entire monthly
   move" is analyst phrasing leaking in; write "Content explains almost all of the
   drop". Same for "swing", "driver", "penetration". "Reach" is fine as the name of the
-  dashboard's KPI ("Reach for Streams was 81.8%"), never as a verb or a vague claim.
+  dashboard's KPI, never as a verb or a vague claim. For a single feature, say what it
+  divides by: "Streams reached 81.8% of the MAU of the organizations that have it".
+  A feature's Reach divides by the MAU of the organizations that have the feature, not
+  by the platform's MAU of the overview: never write "81.8% of MAU" for a feature, and
+  never "active users" (the check fails on it).
 - No figurative phrasing ("gave back the summer spike"), no sentence fragments
   ("Still the platform's backbone").
 - **Name the metric a percentage belongs to, with the dashboard's names**: Jobs Done,
@@ -46,7 +50,7 @@ exist. Every figure is a statement about Jobs Done, never about the platform. Sa
 | Do not write | Write |
 |---|---|
 | "our biggest feature" | "the largest of the features we track" |
-| "used by 81.8% of active users" | "Reach for Streams was 81.8%" |
+| "used by 81.8% of active users" | "Streams reached 81.8% of the MAU of the organizations that have it" |
 | "the only feature to grow" | "the only one of the tracked features to grow" |
 
 The arithmetic behind those phrasings is right; the scope the words imply is not.

@@ -163,6 +163,7 @@ def run_features(sdk, period_dim: str, measures: list[str], filters: dict,
 
 KPI_LABELS = ["✅ Jobs Done", "👥 Users with a Job Done", "🔁 Jobs per User", "📈 MAU",
               "🎯 Reach"]
+KPI_EMOJI = tuple(label.split()[0] for label in KPI_LABELS)
 
 
 def fmt_level(v):
@@ -195,6 +196,10 @@ def overview_lines(cur, prev, unit):
     `cur` and `prev` come from kpis(). Every change is the dashboard's: a ratio for
     the levels, a difference in points for Reach.
     """
+    if cur["reach"] is None or cur["jpu"] is None:
+        sys.exit("Error: no MAU or no users on the period's last day: Looker does not have "
+                 "it yet. Wait a day, then re-run.")
+
     def change(k):
         return fmt_change(pct(cur[k], prev[k]) if prev and prev.get(k) else None)
 
@@ -620,7 +625,12 @@ BANNED = [
     (r"\b(biggest|largest|most[- ]used) feature\b",
      "platform-wide ranking; write 'the largest of the features we track'"),
     (r"\bused by \*{0,2}\d",
-     "'used by X%' implies general feature usage; write 'X% of active users completed a <feature> job'"),
+     "'used by X%' implies general feature usage; write '<Feature> reached X% of the MAU of "
+     "the organizations that have it'"),
+    # MAU is the 28-day count, Users with a Job Done cover the whole period: "active users"
+    # blurs the two. Only the MAU line of the overview names them, as MAU.
+    (r"\bactive users?\b",               "'active users': write MAU in its overview line, "
+                                         "Users with a Job Done elsewhere"),
 ]
 
 # Quantity words are claims. The script cannot judge them, so it surfaces them.
@@ -731,6 +741,31 @@ def check_wording(text, failures, warnings):
     for hit in re.finditer(r"[+-]0\.0%", text):
         failures.append(f"'{hit.group(0)}': write a change under 0.05% with two decimals, or "
                         f"'flat' when it rounds to 0.00%")
+
+
+def check_scope(sec, want, period, failures):
+    """The scope sentence lists exactly `want` ({domain group: [features, largest first]}),
+    each group's features in that order. Shared by the monthly and quarterly checks."""
+    m = SCOPE.search(sec)
+    if not m:
+        failures.append("open on the scope sentence 'Jobs Done covers <Domain> "
+                        "(<Feature>, ...)'")
+        return
+    written = {d: [f.strip() for f in fs.split(",") if f.strip()]
+               for d, fs in SCOPE_GROUP.findall(m.group(1))}
+    for d in sorted(want.keys() - written.keys()):
+        failures.append(f"scope sentence misses the domain {d} ({', '.join(want[d])})")
+    for d in sorted(written.keys() - want.keys()):
+        failures.append(f"scope sentence lists {d}, which is not tracked in {period}")
+    for d in sorted(want.keys() & written.keys()):
+        for f in sorted(set(want[d]) - set(written[d])):
+            failures.append(f"scope sentence misses {f} under {d}")
+        for f in sorted(set(written[d]) - set(want[d])):
+            failures.append(f"scope sentence lists {f} under {d}, which is not tracked in {period}")
+        listed = [f for f in written[d] if f in want[d]]
+        if listed != [f for f in want[d] if f in listed]:
+            failures.append(f"scope sentence: list the features of {d} from largest to "
+                            f"smallest: {', '.join(want[d])}")
 
 
 def check_overview(block, expected, failures):
