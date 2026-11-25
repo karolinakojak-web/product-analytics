@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 """Check a quarterly Jobs Done article against the data and the editorial rules.
 
-    python3 check_quarterly_article.py articles/quarterly_2026-Q2.md
+    python3 check_quarterly_article.py data/drafts/quarterly_2026-Q3.md
 
-Reads the files prepare_quarterly.py writes to data/quarterly/ for that quarter.
+Reads the files prepare_quarterly.py writes to data/quarterly/ for that quarter. The
+article reports LumApps and Beekeeper combined.
 
-  NUMBERS  every M/K/% figure must trace back to the data, with its sign.
-  SHAPE    fixed lines, one ### block per domain group of the scope with its Jobs Done
-           line, one line per feature of the group (largest first, right emoji), the
-           group's top 3 companies in the script's order and one 💡 line.
+  OVERVIEW the five KPI lines, to the digit, as prepare_quarterly.py prints them: they
+           are the figures of the dashboard's Overview tab for the quarter.
+  NUMBERS  every other M/K/% figure must trace back to the data, with its sign.
+  SHAPE    fixed lines, the two highlight sections, one ### block per domain group of
+           the scope with its Jobs Done line, one line per feature of the group
+           (largest first, right emoji), the group's biggest movers by company as the
+           script prints them and one 💡 line.
   RULES    the shared wording rules (jobs_done_common.py), and no year-over-year.
   VOLUME   no daily volume alert left without a verdict, and a "*Data warning: ...*"
            line when a data incident is on record for the period.
@@ -16,85 +20,24 @@ Reads the files prepare_quarterly.py writes to data/quarterly/ for that quarter.
 Exit codes: 0 clean, 1 failures. Warnings never fail the run.
 """
 
-import csv
 import re
 import sys
 from pathlib import Path
 
-from jobs_done_common import (EMOJI, GO_LIVE, SCOPE, SCOPE_GROUP, SMALL_SHARE, YOY,
-                              FRESH_HOURS, anomaly_caveat, check_volume, anomaly_review, check_numbers,
-                              check_wording, comparison_caveat, month_label, num, pct, stale,
-                              weekly_anomaly)
+import prepare_quarterly as pq
+from jobs_done_common import (EMOJI, FRESH_HOURS, KPI_LABELS, SMALL_SHARE, YOY,
+                              anomaly_caveat, anomaly_review, check_numbers, check_overview,
+                              check_scope, check_volume, check_wording, comparison_caveat, dashboard_line,
+                              month_label, num, pct, stale)
 
-DATA_DIR = Path(__file__).resolve().parent / "data" / "quarterly"
-
-GREW = "### Which product domains grew the most?"
-DECLINED = "### Which product domains declined?"
-HIGHLIGHT = re.compile(r"^- (\S+)\s+\*\*([^*]+)\*\*\s+\((LumApps|Beekeeper)\)\s+([+-]\d+(?:\.\d+)?)% QoQ", re.M)
+GREW = "### Which features grew the most?"
+DECLINED = "### Which features declined?"
+DOMAINS_SECTION = "## By tribe"
+HIGHLIGHT = re.compile(r"^- (\S+)\s+\*\*([^*]+)\*\*\s+([+-]\d+(?:\.\d+)?)% QoQ", re.M)
 GROUP = re.compile(r"^### (.+?)\s*$", re.M)
-GROUP_LINE = re.compile(r"^- Jobs Done: \S+ \((?:[+-][\d.]+%|flat) QoQ\), [\d.]+% of (LumApps|Beekeeper) Jobs Done$", re.M)
+GROUP_LINE = re.compile(r"^- Jobs Done: \S+ \((?:[+-][\d.]+%|flat) QoQ\), [\d.]+% of all Jobs Done$", re.M)
 FEATURES_LABEL = "Features by Jobs Done:"
-FEATURE_LINE = re.compile(r"^- (\S+)\s+\*\*([^*]+)\*\*: \S+ \(([^)]*)\), [\d.]+% of the domain$", re.M)
-COMPANIES_LABEL = "Top 3 companies by Jobs Done:"
-MAU_LABEL = "📈 Monthly active users"
-UCJ_LABEL = "👥 Users Completing Jobs"
-FIXED = [
-    ("*Full breakdown available in the [LumApps Jobs Done dashboard]", "italicised LumApps dashboard link"),
-    ("*Full breakdown available in the [Beekeeper Jobs Done dashboard]", "italicised Beekeeper dashboard link"),
-    ("## High level overview", "overview heading"),
-]
-
-
-def shift(q, d):
-    y, n = int(q[:4]), int(q[-1])
-    i = y * 4 + n - 1 + d
-    return f"{i // 4}-Q{i % 4 + 1}"
-
-
-READ = set()   # data files the check read, for the freshness check
-
-
-def read(platform, kind, quarter):
-    path = DATA_DIR / f"{platform}_{kind}_{quarter}.csv"
-    if not path.exists():
-        sys.exit(f"[check_quarterly] {path} not found. Run: "
-                 f"python3 prepare_quarterly.py --quarter {quarter}")
-    READ.add(path)
-    with open(path, encoding="utf-8") as fh:
-        return list(csv.DictReader(fh))
-
-
-def anomalies(platform, quarter):
-    """{feature: step or spike} from the weekly Jobs Done of this quarter and the one before."""
-    weekly = {}
-    for r in read(platform, "feature_weeks", quarter):
-        weekly.setdefault(r["Feature"], []).append((r["Week"], num(r["Jobs Done"])))
-    return {f: a for f, a in ((f, weekly_anomaly(v)) for f, v in weekly.items()) if a}
-
-
-def load(platform, quarter):
-    totals = {r["Quarter"]: r for r in read(platform, "totals", quarter)}
-    feats = {}
-    for r in read(platform, "features", quarter):
-        feats.setdefault(r["Feature"], {})[r["Quarter"]] = r
-    companies = {}
-    for r in read(platform, "companies", quarter):
-        companies.setdefault(r["Feature"], []).append(r)
-    group_companies = {}
-    for r in read(platform, "group_companies", quarter):
-        group_companies.setdefault(r["Product Domain Group"], []).append(r)
-    return totals, feats, companies, group_companies
-
-
-def scope(feats, quarter):
-    """{group: [features, largest first]} live and non-zero in the quarter."""
-    last_month = f"{quarter[:4]}-{3 * int(quarter[-1]):02d}"
-    out = {}
-    for name, by_q in feats.items():
-        row = by_q.get(quarter)
-        if row and num(row["Jobs Done"]) and GO_LIVE.get(name, last_month) <= last_month:
-            out.setdefault(row["Product Domain Group"], []).append((num(row["Jobs Done"]), name))
-    return {g: [n for _, n in sorted(v, reverse=True)] for g, v in out.items()}
+FEATURE_LINE = re.compile(r"^- (\S+)\s+\*\*([^*]+)\*\*: \S+ \(([^)]*)\), [\d.]+% of the tribe$", re.M)
 
 
 def scaled(v):
@@ -110,40 +53,40 @@ def change(v):
     return [("%", v, True)] if v is not None else []
 
 
-def platform_values(totals, quarter):
-    cur, prev = totals.get(quarter), totals.get(shift(quarter, -1))
-    if not cur:
-        sys.exit(f"[check_quarterly] {quarter} missing from the data")
+def total_values(totals, quarter):
+    """The figures of the overview, as a prose sentence may quote them."""
+    cur, prev = pq.quarter_kpis(totals, quarter), pq.quarter_kpis(totals, pq.shift_quarter(quarter, -1))
     out = []
-    for col in ("Jobs Done", "Jobs Done Users", "MAU"):
-        v = num(cur.get(col))
-        out += scaled(v)
+    for k in ("jd", "users", "mau"):
+        out += scaled(cur[k])
         if prev:
-            out += scaled(num(prev.get(col))) + change(pct(v, num(prev.get(col))))
+            out += scaled(prev[k]) + change(pct(cur[k], prev[k]))
+    out += share(cur["reach"]) + (change(pct(cur["jpu"], prev["jpu"])) if prev else [])
     return out
 
 
-def group_values(feats, groups, quarter, platform_jd):
-    prev = shift(quarter, -1)
+def group_values(history, groups, quarter, total_jd):
+    prev = pq.shift_quarter(quarter, -1)
     out = []
     for g, names in groups.items():
-        jd = sum(num(feats[n][quarter]["Jobs Done"]) for n in names)
-        pjd = sum(num(feats[n].get(prev, {}).get("Jobs Done")) for n in names)
-        out += scaled(jd) + scaled(pjd) + change(pct(jd, pjd)) + share(jd / platform_jd * 100)
+        jd = sum(history[(g, n)][quarter]["jd"] for n in names)
+        pjd = sum(history[(g, n)].get(prev, {}).get("jd", 0) for n in names)
+        out += scaled(jd) + scaled(pjd) + change(pct(jd, pjd)) + share(jd / total_jd * 100)
     return out
 
 
-def feature_values(feats, companies, name, group_jd, platform_jd, quarter):
-    cur, prev = feats[name][quarter], feats[name].get(shift(quarter, -1))
-    jd, us = num(cur["Jobs Done"]), num(cur["Jobs Done Users"])
-    out = scaled(jd) + scaled(us) + share(jd / group_jd * 100) + share(jd / platform_jd * 100)
+def feature_values(history, companies, group, name, group_jd, total_jd, quarter):
+    by_q = history[(group, name)]
+    cur, prev = by_q[quarter], by_q.get(pq.shift_quarter(quarter, -1))
+    jd, us = cur["jd"], cur["users"]
+    out = scaled(jd) + scaled(us) + share(jd / group_jd * 100) + share(jd / total_jd * 100)
     if prev:
-        pjd, pus = num(prev["Jobs Done"]), num(prev["Jobs Done Users"])
-        out += scaled(pjd) + scaled(pus) + change(pct(jd, pjd)) + change(pct(us, pus))
-        if us and pus:
-            out += change(pct(jd / us, pjd / pus))
+        out += scaled(prev["jd"]) + scaled(prev["users"]) + change(pct(jd, prev["jd"]))
+        out += change(pct(us, prev["users"]))
+        if us and prev["users"]:
+            out += change(pct(jd / us, prev["jd"] / prev["users"]))
     top3 = 0.0
-    for c in companies.get(name, []):
+    for c in companies.get((group, name), []):
         cj = num(c["Jobs Done"])
         out += scaled(cj) + share(cj / jd * 100)
         if int(c["Rank"]) <= 3:
@@ -152,105 +95,92 @@ def feature_values(feats, companies, name, group_jd, platform_jd, quarter):
     return out
 
 
-def group_company_values(rows, group_jd):
+def mover_values(rows, group_jd):
+    """The figures of a tribe's biggest movers, for the 💡 line to quote."""
     out = []
     for c in rows:
-        cj = num(c["Jobs Done"])
-        out += scaled(cj) + share(cj / group_jd * 100)
+        cur, prev, chg = num(c["Jobs Done"]), num(c["Previous"]), num(c["Change"])
+        out += scaled(cur) + scaled(prev) + share(cur / group_jd * 100)
+        out += [("M", chg / 1e6, True), ("K", chg / 1e3, True)] + change(pct(cur, prev))
+        if c.get("Led by"):
+            led = num(c["Led by change"])
+            out += [("M", led / 1e6, True), ("K", led / 1e3, True)]
     return out
 
 
+def caveat(name, anomalies, quarter):
+    prev = pq.shift_quarter(quarter, -1)
+    window = (f"{pq.quarter_start(prev):%Y-%m-%d}",
+              f"{pq.quarter_start(pq.shift_quarter(quarter, 1)):%Y-%m-%d}")
+    return comparison_caveat(name, *window) or anomaly_caveat(name, anomalies.get(name))
+
+
 def check_highlights(text, data, quarter, failures):
-    """The two highlight sections: 2 or 3 points each, both platforms, like for like."""
-    prev = shift(quarter, -1)
-    window = (f"{prev[:4]}-{3 * int(prev[-1]) - 2:02d}-01",
-              f"{shift(quarter, 1)[:4]}-{3 * int(shift(quarter, 1)[-1]) - 2:02d}-01")
-    plat_of = {"LumApps": "lumapps", "Beekeeper": "beekeeper"}
-    weekly = {p: anomalies(p, quarter) for p in plat_of.values()}
+    """The two highlight sections: 2 or 3 points each, like for like."""
+    totals, history, companies, _ = data
+    prev = pq.shift_quarter(quarter, -1)
+    groups = pq.scope(history, quarter)
+    group_of = {n: g for g, ns in groups.items() for n in ns}
+    anomalies, _ = pq.weekly_anomalies(quarter)
+    total_jd = totals[quarter]["jd"]
     for title, want_up in ((GREW, True), (DECLINED, False)):
         if title not in text:
             failures.append(f"missing the '{title[4:]}' section")
             continue
         body = text.split(title, 1)[1]
-        body = re.split(r"^#{2,3} |^Continue reading", body, maxsplit=1, flags=re.M)[0]
+        body = re.split(r"^#{2,3} ", body, maxsplit=1, flags=re.M)[0]
         points = [l for l in body.splitlines() if l.startswith("- ")]
         label = "highlights/" + ("grew" if want_up else "declined")
         if not 2 <= len(points) <= 3:
             failures.append(f"{label}: {len(points)} points, write 2 or 3")
-        seen, candidates = set(), set()
-        for plat in plat_of.values():
-            totals, feats = data[plat][:2]
-            for g, names in scope(feats, quarter).items():
-                for n in names:
-                    p = feats[n].get(prev)
-                    q = pct(num(feats[n][quarter]["Jobs Done"]), num(p["Jobs Done"])) if p else None
-                    if (q and (q > 0) == want_up and not comparison_caveat(n, *window)
-                            and not anomaly_caveat(plat, n, weekly[plat].get(n))):
-                        candidates.add(plat)
         for line in points:
             m = HIGHLIGHT.match(line)
             if not m:
-                failures.append(f"{label}: write '- <emoji> **Feature** (Platform) +x.x% QoQ: ...', got {line[:60]!r}")
+                failures.append(f"{label}: write '- <emoji> **Feature** +x.x% QoQ: ...', got {line[:60]!r}")
                 continue
-            emoji, name, platform, written = m.group(1), m.group(2).strip(), m.group(3), float(m.group(4))
-            plat = plat_of[platform]
-            totals, feats, companies = data[plat][:3]
-            groups = scope(feats, quarter)
-            group = next((g for g, ns in groups.items() if name in ns), None)
+            emoji, name, written = m.group(1), m.group(2).strip(), float(m.group(3))
+            group = group_of.get(name)
             if not group:
-                failures.append(f"{label}: {name} is not a live {platform} feature in {quarter}")
+                failures.append(f"{label}: {name} is not a live feature in {quarter}")
                 continue
-            seen.add(plat)
             if EMOJI.get(name) and emoji != EMOJI[name]:
                 failures.append(f"{label}: {name} should use {EMOJI[name]}, not {emoji}")
-            caveat = comparison_caveat(name, *window) or anomaly_caveat(plat, name, weekly[plat].get(name))
-            if caveat:
-                failures.append(f"{label}: {name} cannot be a highlight, its QoQ is not like for like ({caveat})")
+            why = caveat(name, anomalies, quarter)
+            if why:
+                failures.append(f"{label}: {name} cannot be a highlight, its QoQ is not like for like ({why})")
             if (written > 0) != want_up:
                 failures.append(f"{label}: {name} {written:+.1f}% belongs in the other section")
-            group_jd = sum(num(feats[n][quarter]["Jobs Done"]) for n in groups[group])
-            platform_jd = num(totals[quarter]["Jobs Done"])
-            if num(feats[name][quarter]["Jobs Done"]) / group_jd * 100 < SMALL_SHARE and "% of " not in line:
+            group_jd = sum(history[(group, n)][quarter]["jd"] for n in groups[group])
+            if history[(group, name)][quarter]["jd"] / group_jd * 100 < SMALL_SHARE and "% of " not in line:
                 failures.append(f"{label}: {name} is under {SMALL_SHARE:.0f}% of {group}, say its share")
-            check_numbers(line, platform_values(totals, quarter)
-                          + group_values(feats, groups, quarter, platform_jd)
-                          + feature_values(feats, companies, name, group_jd, platform_jd, quarter),
+            check_numbers(line, total_values(totals, quarter)
+                          + group_values(history, groups, quarter, total_jd)
+                          + feature_values(history, companies, group, name, group_jd, total_jd, quarter),
                           f"{label}/{name}", failures)
-        for plat in sorted(candidates - seen):
-            failures.append(f"{label}: no {plat} point, while it has candidates; mix both platforms")
 
 
-def check_platform(plat, sec, data, quarter, failures):
-    totals, feats, companies, group_companies = data
-    platform_jd = num(totals[quarter]["Jobs Done"])
-    want = scope(feats, quarter)
-    weekly = anomalies(plat, quarter)
+def check_domains(sec, data, quarter, failures):
+    totals, history, companies, movers = data
+    total_jd = totals[quarter]["jd"]
+    want = pq.scope(history, quarter)
+    anomalies, _ = pq.weekly_anomalies(quarter)
 
-    m = SCOPE.search(sec)
-    if not m:
-        failures.append(f"{plat}: missing the scope sentence 'Jobs Done covers <Domain> (<Feature>, ...)'")
-    else:
-        written = {d: {f.strip() for f in fs.split(",") if f.strip()}
-                   for d, fs in SCOPE_GROUP.findall(m.group(1))}
-        for d in sorted(set(want) | set(written)):
-            miss, extra = set(want.get(d, [])) - written.get(d, set()), written.get(d, set()) - set(want.get(d, []))
-            if miss:
-                failures.append(f"{plat}: scope sentence misses {', '.join(sorted(miss))} ({d})")
-            if extra:
-                failures.append(f"{plat}: scope sentence lists {', '.join(sorted(extra))} ({d}), "
-                                f"not tracked or not live in {quarter}")
+    check_scope(sec, want, quarter, failures)
 
-    allowed = platform_values(totals, quarter) + group_values(feats, want, quarter, platform_jd)
+    allowed = total_values(totals, quarter) + group_values(history, want, quarter, total_jd)
     heads = list(GROUP.finditer(sec))
-    check_numbers(sec[:heads[0].start()] if heads else sec, allowed, f"{plat}/intro", failures)
+    check_numbers(sec[:heads[0].start()] if heads else sec, allowed, "domains/intro", failures)
 
     seen_groups = [h.group(1) for h in heads]
     for g in want:
         if g not in seen_groups:
-            failures.append(f"{plat}: no '### {g}' section")
+            failures.append(f"no '### {g}' block")
     for g in seen_groups:
         if g not in want:
-            failures.append(f"{plat}: '### {g}' is not a domain group of the {quarter} scope")
+            failures.append(f"'### {g}' is not a domain group of the {quarter} scope")
+    order = sorted(want, key=lambda g: -sum(history[(g, n)][quarter]["jd"] for n in want[g]))
+    if [g for g in seen_groups if g in want] != [g for g in order if g in seen_groups]:
+        failures.append(f"order the domain blocks from largest to smallest: {', '.join(order)}")
 
     for i, h in enumerate(heads):
         g = h.group(1)
@@ -259,25 +189,26 @@ def check_platform(plat, sec, data, quarter, failures):
         names = want.get(g, [])
         if not names:
             continue
-        label = f"{plat}/{g}"
-        group_jd = sum(num(feats[n][quarter]["Jobs Done"]) for n in names) or 1
-        values = (allowed + group_company_values(group_companies.get(g, []), group_jd)
-                  + [v for n in names for v in feature_values(feats, companies, n, group_jd,
-                                                              platform_jd, quarter)])
+        label = f"domains/{g}"
+        group_jd = sum(history[(g, n)][quarter]["jd"] for n in names) or 1
+        group_movers = movers.get((g, "gain"), [])[:3] + movers.get((g, "loss"), [])[:3]
+        values = (allowed + mover_values(group_movers, group_jd)
+                  + [v for n in names for v in feature_values(history, companies, g, n, group_jd,
+                                                              total_jd, quarter)])
 
         if not GROUP_LINE.search(body):
             failures.append(f"{label}: open the block on '- Jobs Done: <JD> (<QoQ> QoQ), "
-                            f"<share>% of <Platform> Jobs Done'")
+                            f"<share>% of all Jobs Done'")
 
         # every feature of the group, largest first, with its emoji
         if FEATURES_LABEL not in body:
             failures.append(f"{label}: missing the '{FEATURES_LABEL}' list")
-        listing = re.split(rf"^{re.escape(COMPANIES_LABEL)}|^💡", body.partition(FEATURES_LABEL)[2],
-                           maxsplit=1, flags=re.M)[0]
+        listing = re.split(rf"^{re.escape(pq.GAINERS_LABEL)}|^{re.escape(pq.LOSERS_LABEL)}|^💡",
+                           body.partition(FEATURES_LABEL)[2], maxsplit=1, flags=re.M)[0]
         for raw in listing.splitlines():
             if raw.startswith("- ") and not FEATURE_LINE.match(raw):
                 failures.append(f"{label}: write '- <emoji> **Feature**: <JD> (<QoQ> QoQ), "
-                                f"<share>% of the domain', got {raw[:60]!r}")
+                                f"<share>% of the tribe', got {raw[:60]!r}")
         lines = list(FEATURE_LINE.finditer(listing))
         written = [m.group(2).strip() for m in lines]
         for n in names:
@@ -294,29 +225,27 @@ def check_platform(plat, sec, data, quarter, failures):
             failures.append(f"{label}: list the features from largest to smallest Jobs Done: "
                             f"{', '.join(names)}")
 
-        # the group's top 3 companies, as the script ranks them
-        top = [f"{c['Company']} ({c['Slug']})" if c["Slug"] else c["Company"]
-               for c in group_companies.get(g, [])[:3]]
-        if top and COMPANIES_LABEL not in body:
-            failures.append(f"{label}: missing the '{COMPANIES_LABEL}' list")
-        positions = []
-        for c in top:
-            hit = re.search(rf"^\s*\d\.\s+{re.escape(c)}, ", body, re.M)
-            positions.append(hit.start() if hit else -1)
-        if top and -1 in positions:
-            missing = [c for c, p in zip(top, positions) if p == -1]
-            failures.append(f"{label}: top 3 companies should list {', '.join(missing)}")
-        elif positions != sorted(positions):
-            failures.append(f"{label}: top 3 companies are not in the script's order")
+        # the group's biggest movers by company, as the script prints them
+        for direction, title in (("gain", pq.GAINERS_LABEL), ("loss", pq.LOSERS_LABEL)):
+            want_lines = [pq.mover_line(c) for c in movers.get((g, direction), [])[:3]]
+            if not want_lines:
+                continue
+            if title not in body:
+                failures.append(f"{label}: missing the '{title}' list")
+                continue
+            block = body.partition(title)[2]
+            written = [l.strip() for l in block.splitlines() if re.match(r"^\s*\d\.\s", l)]
+            written = written[:len(want_lines)]
+            if written != want_lines:
+                failures.append(f"{label}: under '{title}' write, as the script prints them: "
+                                + " | ".join(want_lines))
 
         insights = [l for l in body.splitlines() if l.startswith("💡")]
         if len(insights) != 1:
             failures.append(f"{label}: write one 💡 line, found {len(insights)}")
-        for hit in re.finditer(YOY, body, re.I):
-            failures.append(f"{label}: year-over-year in a domain block: {hit.group(0)!r}")
         for n in names:
-            odd = weekly.get(n)
-            if odd and anomaly_caveat(plat, n, odd) and month_label(odd["week"]) not in body:
+            odd = anomalies.get(n)
+            if odd and anomaly_caveat(n, odd) and month_label(odd["week"]) not in body:
                 failures.append(f"{label}: {n} was reviewed as misleading ({odd['kind']} in the "
                                 f"week of {odd['week']}); the 💡 line must explain it and name "
                                 f"{month_label(odd['week'])}")
@@ -325,7 +254,7 @@ def check_platform(plat, sec, data, quarter, failures):
 
 def main():
     if len(sys.argv) != 2:
-        sys.exit("usage: check_quarterly_article.py articles/quarterly_YYYY-QN.md")
+        sys.exit("usage: check_quarterly_article.py data/drafts/quarterly_YYYY-QN.md")
     path = Path(sys.argv[1])
     if not path.exists():
         sys.exit(f"[check_quarterly] no such file: {path}")
@@ -333,71 +262,88 @@ def main():
     if not m:
         sys.exit(f"[check_quarterly] filename must be quarterly_YYYY-QN.md, got {path.name}")
     quarter = m.group(1)
-    q_label, prev_label = f"Q{quarter[-1]} {quarter[:4]}", f"Q{shift(quarter, -1)[-1]} {shift(quarter, -1)[:4]}"
+    prev = pq.shift_quarter(quarter, -1)
+    q_label, prev_label = f"Q{quarter[-1]} {quarter[:4]}", f"Q{prev[-1]} {prev[:4]}"
     text = path.read_text(encoding="utf-8")
     failures, warnings = [], []
+
+    totals = pq.read_totals(quarter)
+    if quarter not in totals:
+        sys.exit(f"[check_quarterly] {quarter} missing from the data. Run: "
+                 f"python3 prepare_quarterly.py --quarter {quarter}")
+    data = (totals, pq.read_features(quarter), *pq.read_companies(quarter))
 
     if not re.search(rf"^# Jobs Done - {q_label} Product Performance$", text, re.M):
         failures.append(f"title must read '# Jobs Done - {q_label} Product Performance'")
     opening = (f"Hi Team, here is how our key product usage KPI, Jobs Done, performed in "
-               f"{q_label} across two platforms. Every change compares with {prev_label}.")
+               f"{q_label} across LumApps and Beekeeper. Every change compares with {prev_label}.")
     # QoQ is defined in the glossary the render adds, not in the article.
-    for needle, what in [(opening, "standard opening")] + FIXED:
+    for needle, what in ((opening, "standard opening"),
+                         ("## High level overview", "overview heading"),
+                         (DOMAINS_SECTION, f"'{DOMAINS_SECTION}' section"),
+                         (dashboard_line("quarter"), "italicised dashboard line, copied as it is")):
         if needle not in text:
             failures.append(f"missing {what}")
-    # MAU has its one overview section, just before Users Completing Jobs. Anywhere
-    # else, "active users" would read as a quarterly count or blur with the users figure.
-    mau_at, ucj_at = text.find(f"\n{MAU_LABEL}\n"), text.find(f"\n{UCJ_LABEL}\n")
-    if mau_at < 0 or ucj_at < 0 or mau_at > ucj_at:
-        failures.append(f"the overview needs '{MAU_LABEL}' then '{UCJ_LABEL}'")
-    for hit in re.finditer(r"\bactive users?\b", text.replace(MAU_LABEL, ""), re.I):
-        failures.append(f"'{hit.group(0)}': MAU belongs in the overview only, write 'Users Completing Jobs'")
     # the fixed section titles hold "the most", which is not a claim
-    check_wording(text.replace(GREW, "").replace(DECLINED, ""), failures, warnings)
+    check_wording(text.replace(GREW, "").replace(DECLINED, "").replace(pq.GAINERS_LABEL, "")
+                  .replace(pq.LOSERS_LABEL, ""), failures, warnings)
+    for hit in re.finditer(YOY, text, re.I):
+        failures.append(f"the quarterly compares QoQ only: {hit.group(0)!r}")
 
-    data = {p: load(p, quarter) for p in ("lumapps", "beekeeper")}
-    head = text.split("## LumApps")[0]
+    head, _, body = text.partition(DOMAINS_SECTION)
     overview, _, highlights = head.partition(GREW)
-    check_highlights(GREW + highlights, data, quarter, failures) if highlights else \
+    check_overview(overview, pq.overview_lines(pq.quarter_kpis(totals, quarter),
+                                               pq.quarter_kpis(totals, prev), "QoQ"), failures)
+    history = data[1]
+    allowed = total_values(totals, quarter) + group_values(
+        history, pq.scope(history, quarter), quarter, totals[quarter]["jd"])
+
+    def story(block):
+        """The prose paragraphs of a block: no heading, KPI line, list item or rule."""
+        return [p.strip() for p in block.split("\n\n") if p.strip()
+                and not p.strip().startswith(("---", "#", "- ") + tuple(KPI_LABELS))]
+
+    # Two or three sentences close the overview, after the two highlight lists: the
+    # quarter as a whole, then the tribes behind it. They may quote the totals and the
+    # figures of each tribe.
+    if story(overview.partition("## High level overview")[2]):
+        failures.append("overview: the introduction goes at the end of the overview, after "
+                        f"'{DECLINED[4:]}', not between the KPI lines and the highlights")
+    closing = story(highlights.partition(DECLINED)[2])
+    if not closing:
+        failures.append("overview: close it with two or three sentences on the quarter as a "
+                        f"whole and the tribes behind it, after the '{DECLINED[4:]}' list")
+    check_numbers("\n\n".join(story(overview.partition("## High level overview")[2]) + closing),
+                  allowed, "overview", failures)
+    if highlights:
+        check_highlights(GREW + highlights, data, quarter, failures)
+    else:
         failures.append(f"missing the '{GREW[4:]}' section")
-    body = text.split("## LumApps", 1)[1] if "## LumApps" in text else ""
-    la, _, bk = body.partition("## Beekeeper")
-    if not body or not bk:
-        failures.append("the article needs a '## LumApps' then a '## Beekeeper' section")
-    check_numbers(overview, platform_values(data["lumapps"][0], quarter)
-                  + platform_values(data["beekeeper"][0], quarter), "overview", failures)
-    for hit in re.finditer(YOY, overview, re.I):
-        failures.append(f"overview: the quarterly compares QoQ only: {hit.group(0)!r}")
-    for plat, sec in (("lumapps", la), ("beekeeper", bk)):
-        if sec:
-            check_platform(plat, sec, data[plat], quarter, failures)
+    if body:
+        check_domains(body, data, quarter, failures)
+
     # No article passes while a step or a spike waits for a person's verdict.
-    for plat in ("lumapps", "beekeeper"):
-        live = {n for names in scope(data[plat][1], quarter).values() for n in names}
-        for name, odd in anomalies(plat, quarter).items():
-            if name in live and not anomaly_review(plat, name, odd):
-                failures.append(f"{plat}/{name}: unreviewed {odd['kind']} ({odd['change']:+.0f}% "
-                                f"in the week of {odd['week']}); investigate it, then record "
-                                f"'misleading' or 'real' in ANOMALY_REVIEWS (jobs_done_common.py)")
+    live = {n for names in pq.scope(data[1], quarter).values() for n in names}
+    for name, odd in pq.weekly_anomalies(quarter)[0].items():
+        if name in live and not anomaly_review(name, odd):
+            failures.append(f"{name}: unreviewed {odd['kind']} ({odd['change']:+.0f}% in the week "
+                            f"of {odd['week']}); investigate it, then record 'misleading' or "
+                            f"'real' in ANOMALY_REVIEWS (jobs_done_common.py)")
 
     # Company directory issues found at fetch time: warnings, since the article's
-    # figures are ranked on tenant_gid and stay right; they still must be reported.
-    import prepare_quarterly
-    for plat in ("lumapps", "beekeeper"):
-        for w in prepare_quarterly.integrity_warnings(plat, quarter):
-            warnings.append(f"company directory ({plat}): {w}")
+    # figures are ranked on organization_id and stay right; they still must be reported.
+    for w in pq.integrity_warnings(quarter):
+        warnings.append(f"company directory: {w}")
 
     # Daily volume: a broken pipeline leaves the figures traceable but wrong.
-    check_volume(prepare_quarterly.volume_alerts(quarter), text, failures)
-    for plat in ("lumapps", "beekeeper"):
-        vol = DATA_DIR / f"{plat}_daily_volume_{quarter}.csv"
-        if vol.exists():
-            READ.add(vol)
-        else:
-            failures.append(f"no daily volume on file for {plat}: re-run python3 prepare_quarterly.py "
+    check_volume(pq.volume_alerts(quarter), text, failures)
+    read = [pq.data_file(k, quarter) for k in ("totals", "features", "companies", "group_movers",
+                                               "feature_weeks", "daily_volume")]
+    for p in read:
+        if not p.exists():
+            failures.append(f"no {p.name} on file: re-run python3 prepare_quarterly.py "
                             f"--quarter {quarter}")
-
-    for p, hours in stale(sorted(READ)):
+    for p, hours in stale([p for p in read if p.exists()]):
         failures.append(f"data is {hours:.0f}h old ({p.name}): an article is checked on data "
                         f"fetched within {FRESH_HOURS}h. Re-run python3 prepare_quarterly.py "
                         f"--quarter {quarter}")

@@ -1,142 +1,115 @@
 #!/usr/bin/env python3
 """Render a checked monthly Jobs Done article as the HTML block for the intranet.
 
-    python3 render_monthly_html.py articles/article_2026-09.md
+    python3 render_monthly_html.py data/drafts/article_2026-10.md [--out-dir DIR]
 
-Writes articles/article_2026-09.html next to it: one <style> and one <div>, to paste
-as embedded content. It uses the look of the quarterly block (render_quarterly_html.py):
-tiles for the overview, then one section per platform with one card per feature
-paragraph. Every figure comes from the Markdown article, which check_article.py has
-already traced to the data: this script only lays it out and adds no figure of its own.
-Above the overview, it adds a folded glossary: the metrics, and what one Job Done is
-for each feature of the scope sentences (render_glossary in render_quarterly_html.py).
+Writes articles/article_2026-10.html (the deliverable) from the checked Markdown draft:
+one <section class="lwa"> holding its
+own <style>, to paste as an HTML widget, in the LumApps brand shell of the artifact pages
+(see render_quarterly_html.py). Five cards for the overview, then the features of the
+month, one numbered block per feature paragraph with its emoji. Every figure comes from
+the Markdown article, which check_article.py has already traced to the data: this script
+only lays it out and adds no figure of its own. Above the overview, it adds a folded
+glossary: the metrics, and what one Job Done is for each feature of the scope sentence.
 
 It fails on an overview line it cannot read, so a layout change never drops a figure
 silently.
 """
 
+import argparse
 import html
 import re
 import sys
 from pathlib import Path
 
 from jobs_done_common import GLOSSARY_METRICS
-from render_quarterly_html import (CSS, PLATFORMS, Unreadable, chip, inline, paragraphs,
-                                   render_glossary, scope_features, split_on)
+from render_quarterly_html import (ARTICLES_DIR, NO_CHIPS, Unreadable, exact_values, paragraphs, prose, render_glossary,
+                                   render_kpis, scope_tribes, split_on, with_chips, wrap)
 
-# The quarterly CSS, plus what the monthly layout adds: two chips per tile (MoM and YoY)
-# and the feature cards, emoji on the left, the paragraph on the right.
-MONTHLY_CSS = CSS + """\
-.jdq .jdq-tc { display: grid; gap: 4px; justify-items: end; color: var(--jdq-muted); font-size: 12.5px; }
-.jdq .jdq-feat { background: var(--jdq-surface); border: 1px solid var(--jdq-line); border-radius: 10px;
-  padding: 14px 16px; display: grid; grid-template-columns: 2em minmax(0, 1fr); gap: 10px; align-items: start; }
-.jdq .jdq-femoji { font-size: 22px; line-height: 1.2; text-align: center; }
-"""
-
-OVERVIEW_ITEM = re.compile(r"^- (LumApps|Beekeeper) (\S+) \(([^)]+)\)$")
-OVERVIEW_CHANGE = re.compile(r"^(\S+) (MoM|YoY)$")
-CHANGE = re.compile(r"([+-]\d[\d.]*%|\bflat\b)(?= (?:MoM|YoY))")
+FEATURES_SECTION = "Features of the month"
+CHANGE = re.compile(r"([+-]\d[\d.]*%|\bflat\b)(?= MoM)")
 # A feature paragraph, as check_article.py counts them: a leading emoji and a bold name.
 LEAD_EMOJI = re.compile(r"^([^\w\s*\[]+)\s*")
 
 
-def with_chips(text: str) -> str:
-    """Inline Markdown, with each '<change> MoM' or '<change> YoY' turned into a chip."""
-    return CHANGE.sub(lambda m: chip(m.group(1)), inline(text))
-
-
-def render_overview(lines: list[str], month: str) -> str:
-    subtitle = {"Jobs Done": f"last 28 days of {month}",
-                "MAU": f"active users, last 28 days of {month}"}
-    out, blocks = [], []
-    for line in (l.strip() for l in lines):
-        if not line or line == "---":
-            continue
-        if line.startswith("- "):
-            m = OVERVIEW_ITEM.match(line)
-            if not m or not blocks:
-                raise Unreadable(f"overview line: {line!r}")
-            changes = []
-            for part in m.group(3).split(", "):
-                c = OVERVIEW_CHANGE.match(part)
-                if not c:
-                    raise Unreadable(f"overview change: {part!r} in {line!r}")
-                changes.append(c.groups())
-            blocks[-1][1].append((m.group(1), m.group(2), changes))
-        else:
-            blocks.append((line, []))
-    for label, items in blocks:
-        kind = next((k for k in subtitle if k in label), None)
-        if not kind:
-            raise Unreadable(f"overview label: {label!r}")
-        tiles = "".join(
-            f'<div class="jdq-tile jdq-{PLATFORMS[p]}"><span class="jdq-tl">{p}</span>'
-            f'<span class="jdq-tv">{html.escape(v)}</span>'
-            f'<span class="jdq-tc">{"".join(f"<span>{chip(c)} {u}</span>" for c, u in changes)}</span>'
-            f'<span class="jdq-tu">{subtitle[kind]}</span></div>'
-            for p, v, changes in items)
-        out.append(f'<div><div class="jdq-klabel">{html.escape(label)}</div>'
-                   f'<div class="jdq-tiles">{tiles}</div></div>')
-    return f'<div class="jdq-overview"><h2 class="jdq-h2">High level overview</h2>{"".join(out)}</div>'
-
-
-def render_platform(platform: str, lines: list[str]) -> str:
-    """Scope sentence and intro in the header, one card per feature paragraph, then the
-    italic lines (dashboard link, data note) as the footer."""
-    head, cards, foot = [], [], []
+def render_features(lines: list[str]) -> str:
+    """Intro, one numbered block per feature paragraph, the italic lines (dashboard link,
+    data note), then the scope, the same in every report, so at the very end."""
+    head, cards, scope, foot = [], [], [], []
     for p in paragraphs(lines):
-        if p.startswith("*") and p.endswith("*") and not p.startswith("**"):
-            foot.append(f'<p class="jdq-footer">{inline(p[1:-1])}</p>')
+        if p.startswith("Jobs Done covers"):
+            scope.append(prose(p))
+        elif p.startswith("*") and p.endswith("*") and not p.startswith("**"):
+            foot.append(prose(p, CHANGE))
         elif (m := LEAD_EMOJI.match(p)) and "**" in p:
-            cards.append(f'<div class="jdq-feat"><span class="jdq-femoji" aria-hidden="true">'
-                         f'{html.escape(m.group(1))}</span><p>{with_chips(p[m.end():])}</p></div>')
+            cards.append(f'<div><span class="lwa-n" aria-hidden="true">{html.escape(m.group(1))}</span>'
+                         f"<div><p>{with_chips(p[m.end():], CHANGE)}</p></div></div>")
         elif cards:
-            raise Unreadable(f"{platform}: paragraph after the feature cards: {p[:60]!r}")
-        else:
-            cls = ' class="jdq-scope"' if p.startswith("Jobs Done covers") else ""
-            head.append(f"<p{cls}>{with_chips(p)}</p>")
-    return (f'<div class="jdq-platform jdq-{PLATFORMS[platform]}"><div class="jdq-phead">'
-            f'<h2 class="jdq-h2">{platform}</h2>{"".join(head)}</div>'
-            f'{"".join(cards)}{"".join(foot)}</div>')
+            raise Unreadable(f"paragraph after the feature cards: {p[:60]!r}")
+        else:   # the introduction stays plain text: tags are for the feature blocks
+            head.append(prose(p, NO_CHIPS))
+    return (f"<h2>{FEATURES_SECTION}</h2>{''.join(head)}"
+            f'<div class="lwa-steps">{"".join(cards)}</div>{"".join(foot)}{"".join(scope)}')
 
 
-def render(text: str) -> str:
+def month_exact(m: str, lines: list[str]) -> dict:
+    """The unrounded overview values of month `m` ("October 2026"), when its data is on file."""
+    import prepare_data as pd
+    from datetime import datetime
+    key = datetime.strptime(m, "%B %Y").strftime("%Y-%m")
+    if not pd.data_file("totals", key).exists():
+        return {}
+    totals = pd.read_totals(key)
+    return exact_values(lines, pd.month_kpis(totals, key),
+                        pd.month_kpis(totals, pd.adj_month(key, -1)), "MoM")
+
+
+def render(text: str, slug: str = "jobs-done") -> str:
     lines = text.splitlines()
     title = next((l[2:].strip() for l in lines if l.startswith("# ")), None)
     month = re.search(r"Jobs Done - (\w+ \d{4})", title or "")
     if not month:
         raise Unreadable("no '# Jobs Done - <Month> <Year> Product Performance' title")
+    m = month.group(1)
     sections = split_on(lines, "## ")
     top = lines[:next((i for i, l in enumerate(lines) if l.startswith("## ")), len(lines))]
-    mast = [f"<p>{inline(p)}</p>" for p in paragraphs(top) if not p.startswith("# ")]
+    intro = [p for p in paragraphs(top) if not p.startswith("# ")]
 
-    scopes = {name: fs for name, sec in sections if name in PLATFORMS and (fs := scope_features(sec))}
-    body = [render_glossary(scopes, GLOSSARY_METRICS)] if scopes else []
+    tribes = next((ts for name, sec in sections if name == FEATURES_SECTION
+                   and (ts := scope_tribes(sec))), [])
+    body = [render_glossary(tribes, GLOSSARY_METRICS)] if tribes else []
+    subtitles = {"Jobs Done": f"over {m}",
+                 "Users with a Job Done": f"unique users over {m}",
+                 "Jobs per User": "Jobs Done per user with a Job Done",
+                 "MAU": f"active users, last 28 days of {m}",
+                 "Reach": "users with a Job Done over 28 days / MAU"}
     for name, sec in sections:
         if name == "High level overview":
-            body.append(render_overview(sec, month.group(1)))
-        elif name in PLATFORMS:
-            body.append(render_platform(name, sec))
+            body.append(f"<h2>High level overview</h2>"
+                        f"{render_kpis(sec, subtitles, month_exact(m, sec))}")
+        elif name == FEATURES_SECTION:
+            body.append(render_features(sec))
         else:
             raise Unreadable(f"unknown section '## {name}'")
-
-    return (f"<style>\n{MONTHLY_CSS}\n</style>\n"
-            f'<div class="jdq"><div class="jdq-mast"><span class="jdq-eyebrow">'
-            f'Product usage KPI · Monthly</span><h2 class="jdq-title">{inline(title)}</h2>'
-            f'{"".join(mast)}</div>{"".join(body)}</div>\n')
+    return wrap(slug, "Product usage KPI · Monthly", title, intro, "".join(body))
 
 
 def main():
-    if len(sys.argv) != 2:
-        sys.exit("usage: render_monthly_html.py articles/article_YYYY-MM.md")
-    src = Path(sys.argv[1])
-    if not re.search(r"article_\d{4}-\d{2}\.md$", src.name):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("draft", help="data/drafts/article_YYYY-MM.md, the checked draft")
+    parser.add_argument("--out-dir", default=str(ARTICLES_DIR),
+                        help="where to write the HTML (default: articles/)")
+    args = parser.parse_args()
+    src = Path(args.draft)
+    m = re.search(r"article_(\d{4}-\d{2})\.md$", src.name)
+    if not m:
         sys.exit(f"[render_monthly] expected article_YYYY-MM.md, got {src.name}")
     try:
-        out = render(src.read_text(encoding="utf-8"))
+        out = render(src.read_text(encoding="utf-8"), f"jobs-done-{m.group(1)}")
     except Unreadable as e:
         sys.exit(f"[render_monthly] cannot lay out {src.name}: {e}")
-    dest = src.with_suffix(".html")
+    dest = Path(args.out_dir) / src.with_suffix(".html").name
+    dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(out, encoding="utf-8")
     print(f"[render_monthly] wrote {dest}")
 
