@@ -88,9 +88,8 @@ That pulls fresh data into `data/` and prints the analysis:
 - three ranked lists telling you what to write about: biggest moves of the month (each
   feature against its own previous month, in Jobs Done), strongest relative moves,
   newly tracked features;
-- the *AGENTS DETAIL* (experimental), once AI & Search reaches the explore: the Agents
-  total, then the largest agents, the biggest absolute growth and the widest adoption
-  across organizations.
+- the *AGENTS DETAIL* (experimental): the Agents total, then the largest agents, the
+  biggest absolute growth and the widest adoption across organizations.
 
 The writing rules live in the skill (see *Layout*). Save the draft as
 `data/drafts/article_YYYY-MM.md`.
@@ -240,7 +239,7 @@ jobs_done_post/
 └── data/               gitignored, regenerated on every run
     ├── totals_YYYY-MM.csv         both platforms together, per month
     ├── features_YYYY-MM.csv       domain group x feature
-    ├── agents_YYYY-MM.csv         Agents, per agent (empty until AI & Search lands)
+    ├── agents_YYYY-MM.csv         Agents, per agent
     ├── daily_volume_YYYY-MM.csv   daily Jobs Done per cell, for the volume checks
     ├── quarterly/      {totals,features,companies,group_movers,daily_volume,...}_YYYY-QN.csv
     └── drafts/         article_YYYY-MM.md, quarterly_YYYY-QN.md: the checked Markdown drafts

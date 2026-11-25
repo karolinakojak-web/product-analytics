@@ -136,11 +136,10 @@ carry customer-level data and are regenerated on demand.
 | `daily_volume_YYYY-MM.csv` | Daily Jobs Done per cell, for the volume checks |
 | `quarterly/*_YYYY-QN.csv` | The quarterly files, see the docstring of `prepare_quarterly.py` |
 
-**Scope** (November 2026): Communication & Collaboration, Work & Automation, Channels,
-People & Growth. **AI & Search** (Search, Agents, Ask AI) joined LumApps Jobs Done in
-September 2026 and is still being migrated to the consolidated explore: it has no data
-there yet. The scripts and the articles are ready for it, and the scope sentence picks it
-up once it has data.
+**Scope** (November 2026): Communication & Collaboration, Work & Automation, AI &
+Search, Channels, People & Growth. **AI & Search** (Search, Agents, Ask AI) joined
+LumApps Jobs Done in September 2026 and reached the consolidated explore in late
+November 2026, with data from late July 2026 (Ask AI from 31 August).
 
 **AI & Search is read at product domain level.** In the explore, `feature` holds one row
 per agent, named after the agent, and some names are customer names. The scripts fetch

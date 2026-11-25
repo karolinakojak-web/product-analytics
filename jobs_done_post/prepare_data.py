@@ -9,8 +9,7 @@ jobs_done_common.py) into the data/ subfolder:
                                adding up both platforms
   - daily_volume_YYYY-MM.csv   daily Jobs Done per cell, to catch broken data (see
                                "Data volume" in jobs_done_common.py)
-  - agents_YYYY-MM.csv         per-agent detail of the Agents domain, empty until
-                               AI & Search reaches the explore
+  - agents_YYYY-MM.csv         per-agent detail of the Agents domain
 
 As on the Overview tab of the dashboard (Time Frame "1 month ago for 1 month"):
 Jobs Done and Users with a Job Done cover the calendar month, day by day; MAU and the

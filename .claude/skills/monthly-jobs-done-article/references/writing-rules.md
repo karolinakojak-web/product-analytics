@@ -136,7 +136,7 @@ have it", never "81.8% of MAU" (see the shared writing rules).
 📢 **Campaigns** grew +XX.X% MoM to XXX.XK Jobs Done, a third month up in a row. Users with a Job Done jumped +XX.X% to XXX.XK while Jobs per User fell -XX.X%: many more people opened a campaign, each one opening fewer.
 ```
 
-### The Agents paragraph (experimental, once AI & Search reaches the explore)
+### The Agents paragraph (experimental)
 
 When Agents is covered, it gets one 🤖 paragraph, which counts as one of the five:
 

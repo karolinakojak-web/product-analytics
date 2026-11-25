@@ -52,8 +52,6 @@ LOOKER = {
     # domain level there (Agents, Search, Ask AI), so these groups are fetched
     # with product_domain standing in for feature. A separate query rather than
     # a sum over agents, since users do not add up across them.
-    # As of November 2026 this group is still being migrated to the explore and
-    # has no data: the code waits for it.
     "domain_level_groups": ["AI & Search"],
     # The one domain the monthly article also looks at per agent (experimental).
     # Kept in its own file so the feature data stays at domain level.

@@ -93,9 +93,8 @@ Jobs Done covers Communication & Collaboration (Content, Streams, Chats, Spaces,
 The HTML render shows it at the end of the article, as a small list above the dashboard
 line: it is the same in every report.
 
-⚠️ **Check the scope every issue, do not copy the last one's sentence.** The scope is
-growing: AI & Search (Search, Agents, Ask AI) is still being migrated to the consolidated
-explore and will show up once it has data. Rebuild the sentence from the domain groups
+⚠️ **Check the scope every issue, do not copy the last one's sentence.** The scope can
+change: a new domain group or feature shows up as soon as it has data. Rebuild the sentence from the domain groups
 and features in the script output. Within a domain, list the features from largest to
 smallest by Jobs Done. A feature listed in `GO_LIVE` in
 `jobs_done_post/jobs_done_common.py` (currently Agents and Search, from September 2026)
