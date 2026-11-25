@@ -226,7 +226,7 @@ EMOJI = {
     "Shifts": "\U0001f4c5", "Forms": "\U0001f5c2️", "Shortcuts": "\U0001f517",
     "Campaigns": "\U0001f4e2", "Company Events": "\U0001f4c6", "Workflows": "⚙️",
     "Comments": "\U0001f5e8️", "Documents": "\U0001f4c1", "Referrals": "\U0001f91d",
-    "Agents": "\U0001f916", "Search": "\U0001f50d",
+    "Agents": "\U0001f916", "Search": "\U0001f50d", "Ask AI": "\U0001f50e",
 }
 
 # Features whose data is backfilled before they joined Jobs Done. They stay out of

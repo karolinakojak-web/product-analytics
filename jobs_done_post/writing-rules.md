@@ -77,7 +77,7 @@ adoption of a tracked action, not of a feature.
 ## Emojis for features
 
 This list is authoritative — use it even if an older article used a different glyph.
-📄 Content · 💬 Chats · 📡 Streams · 🏠 Spaces · 📝 Posts · 🎬 Videos · 👍 Reactions · 📊 Surveys · ☑️ Tasks · 📅 Shifts · 🗂️ Forms · 🔗 Shortcuts · 📢 Campaigns · 📆 Company Events · ⚙️ Workflows · 🗨️ Comments · 📁 Documents · 🤝 Referrals · 🤖 Agents · 🔍 Search
+📄 Content · 💬 Chats · 📡 Streams · 🏠 Spaces · 📝 Posts · 🎬 Videos · 👍 Reactions · 📊 Surveys · ☑️ Tasks · 📅 Shifts · 🗂️ Forms · 🔗 Shortcuts · 📢 Campaigns · 📆 Company Events · ⚙️ Workflows · 🗨️ Comments · 📁 Documents · 🤝 Referrals · 🤖 Agents · 🔍 Search · 🔎 Ask AI
 
 ## Scope sentence
 
